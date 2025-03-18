@@ -62,7 +62,7 @@ def api_gitea_webhook(
 ) -> HttpResponse:
     return gogs_webhook_main(
         "Gitea",
-        "X-Gitea-Event",
+        "X-Gitea-Event-Type",
         format_pull_request_event,
         request,
         user_profile,

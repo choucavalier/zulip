@@ -7,8 +7,6 @@ SETTING_WEBHOOK_GIT_TAGGED_USER_NAME = True
 
 TOPIC_REPO_TEMPLATE = "{repo} / " if SETTING_WEBHOOK_GIT_WITH_REPO_PREFIX else ""
 USER_NAME_TEMPLATE = "@_**{user_name}**" if SETTING_WEBHOOK_GIT_TAGGED_USER_NAME else "{user_name}"
-REVIEWER_TEMPLATE = "@_**{reviewer}**" if SETTING_WEBHOOK_GIT_TAGGED_USER_NAME else "{reviewer}"
-ASSIGNEE_TEMPLATE = "@_**{assignee}**" if SETTING_WEBHOOK_GIT_TAGGED_USER_NAME else "{assignee}"
 
 TOPIC_WITH_BRANCH_TEMPLATE = "{repo_template}{branch}".replace(
     "{repo_template}", TOPIC_REPO_TEMPLATE
@@ -97,16 +95,12 @@ ISSUE_MILESTONED_OR_DEMILESTONED_MESSAGE_TEMPLATE_WITH_TITLE = "[{user_name_temp
 )
 
 PULL_REQUEST_OR_ISSUE_MESSAGE_TEMPLATE = (
-    "{user_name_template} {action}{assignee_template} [{type}{id}{title}]({url})".replace(
+    "{user_name_template} {action}{assignee} [{type}{id}{title}]({url})".replace(
         "{user_name_template}", USER_NAME_TEMPLATE
-    ).replace("{assignee_template}", ASSIGNEE_TEMPLATE)
+    )
 )
-PULL_REQUEST_OR_ISSUE_ASSIGNEE_INFO_TEMPLATE = "(assigned to {assignee})".replace(
-    "{assignee_template}", ASSIGNEE_TEMPLATE
-)
-PULL_REQUEST_REVIEWER_INFO_TEMPLATE = "(assigned reviewers: {reviewer_template})".replace(
-    "{reviewer_template}", REVIEWER_TEMPLATE
-)
+PULL_REQUEST_OR_ISSUE_ASSIGNEE_INFO_TEMPLATE = "(assigned to @**{assignee}**)"
+PULL_REQUEST_REVIEWER_INFO_TEMPLATE = "(assigned reviewers: @**{reviewer}**)"
 PULL_REQUEST_BRANCH_INFO_TEMPLATE = "from `{target}` to `{base}`"
 
 CONTENT_MESSAGE_TEMPLATE = "\n~~~ quote\n{message}\n~~~"
@@ -137,10 +131,9 @@ RELEASE_MESSAGE_TEMPLATE_WITHOUT_USER_NAME_WITHOUT_URL = (
 def get_assignee_string(assignees: list[dict[str, Any]]) -> str:
     assignees_string = ""
     if len(assignees) == 1:
-        assignees_string = "{username}".format(**assignees[0])
+        assignees_string = "@**{username}**".format(**assignees[0])
     else:
-        usernames = [a["username"] for a in assignees]
-
+        usernames = ['@**{a["username"]}**' for a in assignees]
         assignees_string = ", ".join(usernames[:-1]) + " and " + usernames[-1]
     return assignees_string
 
@@ -268,8 +261,8 @@ def get_pull_request_event_message(
         "id": f" #{number}" if number is not None else "",
         "title": f" {title}" if title is not None else "",
         "assignee": {
-            "assigned": f" {assignee_updated} to",
-            "unassigned": f" {assignee_updated} from",
+            "assigned": f" @**{assignee_updated}** to",
+            "unassigned": f" @**{assignee_updated}** from",
         }.get(action, ""),
     }
 
@@ -292,7 +285,7 @@ def get_pull_request_event_message(
         assignee_info = PULL_REQUEST_OR_ISSUE_ASSIGNEE_INFO_TEMPLATE.format(assignee=assignee)
 
     elif reviewer:
-        assignee_info = PULL_REQUEST_REVIEWER_INFO_TEMPLATE.format(reviewer=reviewer)
+        assignee_info = PULL_REQUEST_REVIEWER_INFO_TEMPLATE.format(reviewer=f"@**{reviewer}**")
 
     if assignees or assignee or reviewer:
         main_message = f"{main_message} {assignee_info}"

@@ -2,9 +2,23 @@ import string
 from collections import defaultdict
 from typing import Any
 
-TOPIC_WITH_BRANCH_TEMPLATE = "{repo} / {branch}"
-TOPIC_WITH_PR_OR_ISSUE_INFO_TEMPLATE = "{repo} / {type} #{id} {title}"
-TOPIC_WITH_RELEASE_TEMPLATE = "{repo} / {tag} {title}"
+SETTING_WEBHOOK_GIT_WITH_REPO_PREFIX = False
+SETTING_WEBHOOK_GIT_TAGGED_USER_NAME = True
+
+TOPIC_REPO_TEMPLATE = "{repo} / " if SETTING_WEBHOOK_GIT_WITH_REPO_PREFIX else ""
+USER_NAME_TEMPLATE = "@_**{user_name}**" if SETTING_WEBHOOK_GIT_TAGGED_USER_NAME else "{user_name}"
+REVIEWER_TEMPLATE = "@_**{reviewer}**" if SETTING_WEBHOOK_GIT_TAGGED_USER_NAME else "{reviewer}"
+ASSIGNEE_TEMPLATE = "@_**{assignee}**" if SETTING_WEBHOOK_GIT_TAGGED_USER_NAME else "{assignee}"
+
+TOPIC_WITH_BRANCH_TEMPLATE = "{repo_template}{branch}".replace(
+    "{repo_template}", TOPIC_REPO_TEMPLATE
+)
+TOPIC_WITH_PR_OR_ISSUE_INFO_TEMPLATE = "{repo_template}{type} #{id} {title}".replace(
+    "{repo_template}", TOPIC_REPO_TEMPLATE
+)
+TOPIC_WITH_RELEASE_TEMPLATE = "{repo_template}{tag} {title}".replace(
+    "{repo_template}", TOPIC_REPO_TEMPLATE
+)
 
 EMPTY_SHA = "0000000000000000000000000000000000000000"
 
@@ -16,7 +30,9 @@ COMMIT_OR_COMMITS = "commit{}"
 PUSH_PUSHED_TEXT_WITH_URL = "[{push_type}]({compare_url}) {number_of_commits} {commit_or_commits}"
 PUSH_PUSHED_TEXT_WITHOUT_URL = "{push_type} {number_of_commits} {commit_or_commits}"
 
-PUSH_COMMITS_BASE = "{user_name} {pushed_text} to branch {branch_name}."
+PUSH_COMMITS_BASE = "{user_name_template} {pushed_text} to branch {branch_name}.".replace(
+    "{user_name_template}", USER_NAME_TEMPLATE
+)
 PUSH_COMMITS_MESSAGE_TEMPLATE_WITH_COMMITTERS = (
     PUSH_COMMITS_BASE
     + """ {committers_details}.
@@ -32,46 +48,84 @@ PUSH_COMMITS_MESSAGE_TEMPLATE_WITHOUT_COMMITTERS = (
 """
 )
 PUSH_DELETE_BRANCH_MESSAGE_TEMPLATE = (
-    "{user_name} [deleted]({compare_url}) the branch {branch_name}."
+    "{user_name_template} [deleted]({compare_url}) the branch {branch_name}.".replace(
+        "{user_name_template}", USER_NAME_TEMPLATE
+    )
 )
 PUSH_LOCAL_BRANCH_WITHOUT_COMMITS_MESSAGE_TEMPLATE = (
-    "{user_name} [{push_type}]({compare_url}) the branch {branch_name}."
+    "{user_name_template} [{push_type}]({compare_url}) the branch {branch_name}.".replace(
+        "{user_name_template}", USER_NAME_TEMPLATE
+    )
 )
 PUSH_LOCAL_BRANCH_WITHOUT_COMMITS_MESSAGE_WITHOUT_URL_TEMPLATE = (
-    "{user_name} {push_type} the branch {branch_name}."
+    "{user_name_template} {push_type} the branch {branch_name}.".replace(
+        "{user_name_template}", USER_NAME_TEMPLATE
+    )
 )
 PUSH_COMMITS_MESSAGE_EXTENSION = "Commits by {}"
 PUSH_COMMITTERS_LIMIT_INFO = 3
 
-FORCE_PUSH_COMMITS_MESSAGE_TEMPLATE = (
-    "{user_name} [force pushed]({url}) to branch {branch_name}. Head is now {head}."
+FORCE_PUSH_COMMITS_MESSAGE_TEMPLATE = "{user_name_template} [force pushed]({url}) to branch {branch_name}. Head is now {head}.".replace(
+    "{user_name_template}", USER_NAME_TEMPLATE
 )
-CREATE_BRANCH_MESSAGE_TEMPLATE = "{user_name} created [{branch_name}]({url}) branch."
-CREATE_BRANCH_WITHOUT_URL_MESSAGE_TEMPLATE = "{user_name} created {branch_name} branch."
-REMOVE_BRANCH_MESSAGE_TEMPLATE = "{user_name} deleted branch {branch_name}."
-
-ISSUE_LABELED_OR_UNLABELED_MESSAGE_TEMPLATE = (
-    "[{user_name}]({user_url}) {action} the {label_name} label {preposition} [Issue #{id}]({url})."
+CREATE_BRANCH_MESSAGE_TEMPLATE = (
+    "{user_name_template} created [{branch_name}]({url}) branch.".replace(
+        "{user_name_template}", USER_NAME_TEMPLATE
+    )
 )
-ISSUE_LABELED_OR_UNLABELED_MESSAGE_TEMPLATE_WITH_TITLE = "[{user_name}]({user_url}) {action} the {label_name} label {preposition} [Issue #{id} {title}]({url})."
+CREATE_BRANCH_WITHOUT_URL_MESSAGE_TEMPLATE = (
+    "{user_name_template} created {branch_name} branch.".replace(
+        "{user_name_template}", USER_NAME_TEMPLATE
+    )
+)
+REMOVE_BRANCH_MESSAGE_TEMPLATE = "{user_name_template} deleted branch {branch_name}.".replace(
+    "{user_name_template}", USER_NAME_TEMPLATE
+)
 
-ISSUE_MILESTONED_OR_DEMILESTONED_MESSAGE_TEMPLATE = "[{user_name}]({user_url}) {action} milestone [{milestone_name}]({milestone_url}) {preposition} [issue #{id}]({url})."
-ISSUE_MILESTONED_OR_DEMILESTONED_MESSAGE_TEMPLATE_WITH_TITLE = "[{user_name}]({user_url}) {action} milestone [{milestone_name}]({milestone_url}) {preposition} [issue #{id} {title}]({url})."
+ISSUE_LABELED_OR_UNLABELED_MESSAGE_TEMPLATE = "[{user_name_template}]({user_url}) {action} the {label_name} label {preposition} [Issue #{id}]({url}).".replace(
+    "{user_name_template}", USER_NAME_TEMPLATE
+)
+ISSUE_LABELED_OR_UNLABELED_MESSAGE_TEMPLATE_WITH_TITLE = "[{user_name_template}]({user_url}) {action} the {label_name} label {preposition} [Issue #{id} {title}]({url}).".replace(
+    "{user_name_template}", USER_NAME_TEMPLATE
+)
 
-PULL_REQUEST_OR_ISSUE_MESSAGE_TEMPLATE = "{user_name} {action}{assignee} [{type}{id}{title}]({url})"
-PULL_REQUEST_OR_ISSUE_ASSIGNEE_INFO_TEMPLATE = "(assigned to {assignee})"
-PULL_REQUEST_REVIEWER_INFO_TEMPLATE = "(assigned reviewers: {reviewer})"
+ISSUE_MILESTONED_OR_DEMILESTONED_MESSAGE_TEMPLATE = "[{user_name_template}]({user_url}) {action} milestone [{milestone_name}]({milestone_url}) {preposition} [issue #{id}]({url}).".replace(
+    "{user_name_template}", USER_NAME_TEMPLATE
+)
+ISSUE_MILESTONED_OR_DEMILESTONED_MESSAGE_TEMPLATE_WITH_TITLE = "[{user_name_template}]({user_url}) {action} milestone [{milestone_name}]({milestone_url}) {preposition} [issue #{id} {title}]({url}).".replace(
+    "{user_name_template}", USER_NAME_TEMPLATE
+)
+
+PULL_REQUEST_OR_ISSUE_MESSAGE_TEMPLATE = (
+    "{user_name_template} {action}{assignee_template} [{type}{id}{title}]({url})".replace(
+        "{user_name_template}", USER_NAME_TEMPLATE
+    ).replace("{assignee_template}", ASSIGNEE_TEMPLATE)
+)
+PULL_REQUEST_OR_ISSUE_ASSIGNEE_INFO_TEMPLATE = "(assigned to {assignee})".replace(
+    "{assignee_template}", ASSIGNEE_TEMPLATE
+)
+PULL_REQUEST_REVIEWER_INFO_TEMPLATE = "(assigned reviewers: {reviewer_template})".replace(
+    "{reviewer_template}", REVIEWER_TEMPLATE
+)
 PULL_REQUEST_BRANCH_INFO_TEMPLATE = "from `{target}` to `{base}`"
 
 CONTENT_MESSAGE_TEMPLATE = "\n~~~ quote\n{message}\n~~~"
 
-COMMITS_COMMENT_MESSAGE_TEMPLATE = "{user_name} {action} on [{sha}]({url})"
+COMMITS_COMMENT_MESSAGE_TEMPLATE = "{user_name_template} {action} on [{sha}]({url})".replace(
+    "{user_name_template}", USER_NAME_TEMPLATE
+)
 
-PUSH_TAGS_MESSAGE_TEMPLATE = """{user_name} {action} tag {tag}"""
+PUSH_TAGS_MESSAGE_TEMPLATE = """{user_name_template} {action} tag {tag}""".replace(
+    "{user_name_template}", USER_NAME_TEMPLATE
+)
 TAG_WITH_URL_TEMPLATE = "[{tag_name}]({tag_url})"
 TAG_WITHOUT_URL_TEMPLATE = "{tag_name}"
 
-RELEASE_MESSAGE_TEMPLATE = "{user_name} {action} release [{release_name}]({url}) for tag {tagname}."
+RELEASE_MESSAGE_TEMPLATE = (
+    "{user_name_template} {action} release [{release_name}]({url}) for tag {tagname}.".replace(
+        "{user_name_template}", USER_NAME_TEMPLATE
+    )
+)
 RELEASE_MESSAGE_TEMPLATE_WITHOUT_USER_NAME = (
     "Release [{release_name}]({url}) for tag {tagname} was {action}."
 )

@@ -126,13 +126,11 @@ def format_issue_comment_event(payload: WildValue, include_title: bool = False) 
     action = payload["action"].tame(check_string)
     comment = payload["comment"]
     issue = payload["issue"]
-
     if action == "created":
         action = "[commented]"
     else:
         action = f"{action} a [comment]"
     action += "({}) on".format(comment["html_url"].tame(check_string))
-
     return get_issue_event_message(
         user_name=payload["sender"]["login"].tame(check_string),
         action=action,
@@ -142,6 +140,25 @@ def format_issue_comment_event(payload: WildValue, include_title: bool = False) 
         number=issue["number"].tame(check_int),
         message=comment["body"].tame(check_string),
         title=issue["title"].tame(check_string) if include_title else None,
+    )
+
+
+def format_pull_request_comment_event(payload: WildValue, include_title: bool = False) -> str:
+    action = payload["action"].tame(check_string)
+    comment = payload["comment"]
+    pull_request = payload["pull_request"]
+    if action == "created":
+        action = "[commented]"
+    else:
+        action = f"{action} a [comment]"
+    action += "({}) on".format(comment["html_url"].tame(check_string))
+    return get_pull_request_event_message(
+        user_name=payload["sender"]["login"].tame(check_string),
+        action=action,
+        url=pull_request["url"].tame(check_string),
+        number=pull_request["number"].tame(check_int),
+        message=comment["body"].tame(check_string),
+        title=pull_request["title"].tame(check_string) if include_title else None,
     )
 
 
@@ -157,7 +174,15 @@ def format_release_event(payload: WildValue, include_title: bool = False) -> str
     return get_release_event_message(**data)
 
 
-ALL_EVENT_TYPES = ["issue_comment", "issues", "create", "pull_request", "push", "release"]
+ALL_EVENT_TYPES = [
+    "issue_comment",
+    "issues",
+    "create",
+    "pull_request",
+    "pull_request_comment",
+    "push",
+    "release",
+]
 
 
 @webhook_view("Gogs", all_event_types=ALL_EVENT_TYPES)
@@ -172,7 +197,7 @@ def api_gogs_webhook(
 ) -> HttpResponse:
     return gogs_webhook_main(
         "Gogs",
-        "X-Gogs-Event",
+        "X-Gogs-Event-Type",
         format_pull_request_event,
         request,
         user_profile,
@@ -245,6 +270,17 @@ def gogs_webhook_main(
             type="issue",
             id=payload["issue"]["number"].tame(check_int),
             title=payload["issue"]["title"].tame(check_string),
+        )
+    elif event == "pull_request_comment":
+        body = format_pull_request_comment_event(
+            payload,
+            include_title=user_specified_topic is not None,
+        )
+        topic_name = TOPIC_WITH_PR_OR_ISSUE_INFO_TEMPLATE.format(
+            repo=repo,
+            type="PR",
+            id=payload["pull_request"]["number"].tame(check_int),
+            title=payload["pull_request"]["title"].tame(check_string),
         )
     elif event == "release":
         body = format_release_event(

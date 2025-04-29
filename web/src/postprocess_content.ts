@@ -8,9 +8,7 @@ import * as util from "./util.ts";
 let inertDocument: Document | undefined;
 
 export function postprocess_content(html: string): string {
-    if (inertDocument === undefined) {
-        inertDocument = new DOMParser().parseFromString("", "text/html");
-    }
+    inertDocument ??= new DOMParser().parseFromString("", "text/html");
     const template = inertDocument.createElement("template");
     template.innerHTML = html;
 
@@ -54,6 +52,26 @@ export function postprocess_content(html: string): string {
             elt.removeAttribute("target");
         }
 
+        if (elt.querySelector("img") || elt.querySelector("video")) {
+            // We want a class to refer to media links
+            elt.classList.add("media-anchor-element");
+            // Add a class to the video, if it exists
+            if (elt.querySelector("video")) {
+                elt.querySelector("video")?.classList.add("media-video-element");
+            }
+            // Add a class to the image, if it exists
+            if (elt.querySelector("img")) {
+                elt.querySelector("img")?.classList.add("media-image-element");
+            }
+        }
+
+        if (elt.querySelector("video")) {
+            // We want a class to refer to media links
+            elt.classList.add("media-anchor-element");
+            // And likewise a class to refer to image elements
+            elt.querySelector("video")?.classList.add("media-image-element");
+        }
+
         // Update older, smaller default.jpg YouTube preview images
         // with higher-quality preview images (320px wide)
         if (elt.parentElement?.classList.contains("youtube-video")) {
@@ -66,6 +84,11 @@ export function postprocess_content(html: string): string {
             }
         }
 
+        // Add a class to the anchor tag on
+        if (elt.parentElement?.classList.contains("message_embed_title")) {
+            elt.classList.add("message-embed-title-link");
+        }
+
         if (elt.parentElement?.classList.contains("message_inline_image")) {
             // For inline images we want to handle the tooltips explicitly, and disable
             // the browser's built in handling of the title attribute.
@@ -73,6 +96,63 @@ export function postprocess_content(html: string): string {
             if (title !== null) {
                 elt.setAttribute("aria-label", title);
                 elt.removeAttribute("title");
+            }
+            // To prevent layout shifts and flexibly size image previews,
+            // we read the image's original dimensions, when present, and
+            // set those values as `height` and `width` attributes on the
+            // image source.
+            const inline_image = elt.querySelector("img");
+            if (inline_image?.hasAttribute("data-original-dimensions")) {
+                // TODO: Modify eslint config, if we wish to avoid dataset
+                //
+                /* eslint unicorn/prefer-dom-node-dataset: "off" */
+                const original_dimensions_attribute = inline_image.getAttribute(
+                    "data-original-dimensions",
+                );
+                assert(original_dimensions_attribute);
+                const original_dimensions: string[] = original_dimensions_attribute.split("x");
+                assert(
+                    original_dimensions.length === 2 &&
+                        typeof original_dimensions[0] === "string" &&
+                        typeof original_dimensions[1] === "string",
+                );
+
+                const original_width = Number(original_dimensions[0]);
+                const original_height = Number(original_dimensions[1]);
+                const font_size_in_use = user_settings.web_font_size_px;
+                // At 20px/1em, image boxes are 200px by 80px in either
+                // horizontal or vertical orientation; 80 / 200 = 0.4
+                // We need to show more of the background color behind
+                // these extremely tall or extremely wide images, and
+                // use a subtler background color than on other images
+                const image_min_aspect_ratio = 0.4;
+                // "Dinky" images are those that are smaller than the
+                // 10em box reserved for thumbnails
+                const image_box_em = 10;
+                const is_dinky_image =
+                    original_width / font_size_in_use <= image_box_em &&
+                    original_height / font_size_in_use <= image_box_em;
+                const has_extreme_aspect_ratio =
+                    original_width / original_height <= image_min_aspect_ratio ||
+                    original_height / original_width <= image_min_aspect_ratio;
+                const is_portrait_image = original_width <= original_height;
+
+                inline_image.setAttribute("width", `${original_width}`);
+                inline_image.setAttribute("height", `${original_height}`);
+
+                if (is_dinky_image) {
+                    inline_image.classList.add("dinky-thumbnail");
+                }
+
+                if (has_extreme_aspect_ratio) {
+                    inline_image.classList.add("extreme-aspect-ratio");
+                }
+
+                if (is_portrait_image) {
+                    inline_image.classList.add("portrait-thumbnail");
+                } else {
+                    inline_image.classList.add("landscape-thumbnail");
+                }
             }
         } else {
             // For non-image user uploads, the following block ensures that the title
@@ -161,6 +241,36 @@ export function postprocess_content(html: string): string {
             }
             inline_img.src = inline_img.src.replace(/\/[^/]+$/, "/" + thumbnail_name);
         }
+    }
+
+    // After all other processing on images has been done, we look for
+    // adjacent images and tuck them structurally into galleries.
+    // This will also process uploaded video thumbnails, which likewise
+    // take the `.message_inline_image` class
+    for (const elt of template.content.querySelectorAll(".message_inline_image")) {
+        let gallery_element;
+
+        const is_part_of_open_gallery = elt.previousElementSibling?.classList.contains(
+            "message-thumbnail-gallery",
+        );
+
+        if (is_part_of_open_gallery) {
+            // If the the current media element's previous sibling is a gallery,
+            // it should be kept with the other media in that gallery.
+            gallery_element = elt.previousElementSibling;
+        } else {
+            // Otherwise, we've found an image element that follows some other
+            // content (or is the first in the message) and need to create a
+            // gallery for it, and perhaps other adjacent sibling media elements,
+            // if they exist.
+            gallery_element = inertDocument.createElement("div");
+            gallery_element.classList.add("message-thumbnail-gallery");
+            // We insert the gallery just before the media element we've found
+            elt.before(gallery_element);
+        }
+
+        // Finally, the media element gets moved into the current gallery
+        gallery_element?.append(elt);
     }
 
     return template.innerHTML;

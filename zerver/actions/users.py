@@ -13,6 +13,7 @@ from django.utils.http import urlsafe_base64_encode
 from django.utils.timezone import now as timezone_now
 from django.utils.translation import get_language
 
+from zerver.actions.streams import send_peer_remove_events
 from zerver.actions.user_groups import (
     do_send_user_group_members_update_event,
     update_users_in_full_members_system_group,
@@ -41,7 +42,10 @@ from zerver.lib.streams import (
 from zerver.lib.subscription_info import bulk_get_subscriber_peer_info
 from zerver.lib.types import UserGroupMembersData
 from zerver.lib.user_counts import realm_user_count_by_role
-from zerver.lib.user_groups import get_system_user_group_for_user
+from zerver.lib.user_groups import (
+    convert_to_user_group_members_dict,
+    get_system_user_group_for_user,
+)
 from zerver.lib.users import (
     get_active_bots_owned_by_user,
     get_user_ids_who_can_access_user,
@@ -295,7 +299,7 @@ def send_group_update_event_for_anonymous_group_setting(
                 type="user_group",
                 op="update",
                 group_id=named_group.id,
-                data={setting_name: new_setting_value},
+                data={setting_name: convert_to_user_group_members_dict(new_setting_value)},
             )
             send_event_on_commit(realm, event, notify_user_ids)
             return
@@ -318,7 +322,7 @@ def send_realm_update_event_for_anonymous_group_setting(
                 type="realm",
                 op="update_dict",
                 property="default",
-                data={setting_name: new_setting_value},
+                data={setting_name: convert_to_user_group_members_dict(new_setting_value)},
             )
             send_event_on_commit(realm, event, notify_user_ids)
             return
@@ -380,6 +384,19 @@ def send_update_events_for_anonymous_group_settings(
 
 
 def send_events_for_user_deactivation(user_profile: UserProfile) -> None:
+    subscribed_streams = get_streams_for_user(
+        user_profile,
+        include_public=False,
+        include_subscribed=True,
+    )
+    altered_user_dict: dict[int, set[int]] = defaultdict(set)
+    streams: list[Stream] = []
+    for stream in subscribed_streams:
+        altered_user_dict[stream.id].add(user_profile.id)
+        streams.append(stream)
+
+    send_peer_remove_events(user_profile.realm, streams, altered_user_dict)
+
     event_deactivate_user = dict(
         type="realm_user",
         op="update",
@@ -549,7 +566,7 @@ def send_stream_events_for_role_update(
 ) -> None:
     current_accessible_streams = get_streams_for_user(
         user_profile,
-        include_all=user_profile.is_realm_admin,
+        include_all=True,
         include_web_public=True,
     )
 
@@ -623,7 +640,7 @@ def do_change_user_role(
     previously_accessible_streams = get_streams_for_user(
         user_profile,
         include_web_public=True,
-        include_all=user_profile.is_realm_admin,
+        include_all=True,
     )
 
     user_profile.role = value

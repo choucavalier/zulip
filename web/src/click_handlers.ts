@@ -341,7 +341,7 @@ export function initialize(): void {
     });
     $("body").on("click", ".message_edit_save", function (e) {
         const $row = $(this).closest(".message_row");
-        message_edit.save_message_row_edit($row);
+        void message_edit.save_message_row_edit($row);
         e.stopPropagation();
     });
     $("body").on("click", ".message_edit_cancel", function (e) {
@@ -386,6 +386,14 @@ export function initialize(): void {
             message_edit.clear_preview_area($(this));
         },
     );
+
+    $("body").on("input", ".message_edit_form textarea", function (this: HTMLElement) {
+        const $row = $(this).closest(".message_row");
+
+        if ($row.hasClass("preview_mode")) {
+            message_edit.render_preview_area($row);
+        }
+    });
 
     // RESOLVED TOPICS
     $("body").on("click", ".message_header .on_hover_topic_resolve", (e) => {

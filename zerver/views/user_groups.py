@@ -311,6 +311,7 @@ def notify_for_user_group_subscription_changes(
                 recipient_user=recipient_user,
                 content=message,
                 mention_backend=mention_backend,
+                acting_user=acting_user,
             )
         )
 
@@ -521,7 +522,7 @@ def get_is_user_group_member(
         request,
         data={
             "is_user_group_member": is_user_in_group(
-                user_group, target_user, direct_member_only=direct_member_only
+                user_group.id, target_user, direct_member_only=direct_member_only
             )
         },
     )

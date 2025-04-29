@@ -5,7 +5,7 @@ import _ from "lodash";
 import assert from "minimalistic-assert";
 import type * as tippy from "tippy.js";
 
-import render_inline_decorated_stream_name from "../templates/inline_decorated_stream_name.hbs";
+import render_inline_decorated_channel_name from "../templates/inline_decorated_channel_name.hbs";
 
 import * as compose_banner from "./compose_banner.ts";
 import * as compose_fade from "./compose_fade.ts";
@@ -114,6 +114,10 @@ export function update_on_recipient_change(): void {
     drafts.update_compose_draft_count();
     check_posting_policy_for_compose_box();
     compose_validate.validate_and_update_send_button_status();
+
+    // Clear the topic moved banner when the recipient
+    // is changed or compose box is closed.
+    compose_validate.clear_topic_moved_info();
 }
 
 export let check_posting_policy_for_compose_box = (): void => {
@@ -163,7 +167,7 @@ function update_recipient_label(stream_id?: number): void {
         );
     } else {
         $("#compose_select_recipient_widget .dropdown_widget_value").html(
-            render_inline_decorated_stream_name({stream, show_colored_icon: true}),
+            render_inline_decorated_channel_name({stream, show_colored_icon: true}),
         );
     }
 }
@@ -188,7 +192,7 @@ export function update_compose_for_message_type(opts: ComposeTriggeredOptions): 
         // it here.
         const direct_message_label = $t({defaultMessage: "DM"});
         $("#compose_select_recipient_widget .dropdown_widget_value").html(
-            `<i class="zulip-icon zulip-icon-users stream-privacy-type-icon"></i> ${direct_message_label}`,
+            `<i class="zulip-icon zulip-icon-users channel-privacy-type-icon"></i> ${direct_message_label}`,
         );
     }
     compose_banner.clear_errors();
@@ -331,13 +335,20 @@ export function initialize(): void {
     $("#private_message_recipient").on("input", restore_placeholder_in_firefox_for_no_input);
 }
 
-export function update_topic_displayed_text(
-    topic_name: string | undefined,
-    has_topic_focus = false,
-): void {
-    if (topic_name === undefined) {
-        topic_name = "";
+export function update_topic_inputbox_on_mandatory_topics_change(): void {
+    if (realm.realm_mandatory_topics) {
+        const $input = $("input#stream_message_recipient_topic");
+        $input.attr("placeholder", $t({defaultMessage: "Topic"}));
+        $input.removeClass("empty-topic-display");
+        const $topic_not_mandatory_placeholder = $("#topic-not-mandatory-placeholder");
+        $topic_not_mandatory_placeholder.removeClass("visible");
+        $topic_not_mandatory_placeholder.hide();
+        return;
     }
+    update_topic_displayed_text(compose_state.topic());
+}
+
+export function update_topic_displayed_text(topic_name = "", has_topic_focus = false): void {
     compose_state.topic(topic_name);
 
     // When topics are mandatory, no additional adjustments are needed.
@@ -356,14 +367,11 @@ export function update_topic_displayed_text(
     // reset
     $input.attr("placeholder", "");
     $input.removeClass("empty-topic-display");
-    $topic_not_mandatory_placeholder.css({visibility: "hidden"});
+    $topic_not_mandatory_placeholder.removeClass("visible");
     $topic_not_mandatory_placeholder.hide();
 
     function update_placeholder_visibility(): void {
-        $topic_not_mandatory_placeholder.css(
-            "visibility",
-            $input.val() === "" ? "visible" : "hidden",
-        );
+        $topic_not_mandatory_placeholder.toggleClass("visible", $input.val() === "");
     }
 
     if (is_empty_string_topic && !has_topic_focus && recipient_widget_hidden) {

@@ -15,7 +15,6 @@ import * as compose_send_menu_popover from "./compose_send_menu_popover.js";
 import * as compose_state from "./compose_state.ts";
 import * as compose_textarea from "./compose_textarea.ts";
 import * as condense from "./condense.ts";
-import * as copy_messages from "./copy_messages.ts";
 import * as deprecated_feature_notice from "./deprecated_feature_notice.ts";
 import * as drafts_overlay_ui from "./drafts_overlay_ui.ts";
 import * as emoji from "./emoji.ts";
@@ -356,7 +355,7 @@ export function process_escape_key(e) {
 
         // When the input is focused, we blur and clear the input. A second "Esc"
         // will zoom out, handled below.
-        if (stream_list.is_zoomed_in() && $("#filter-topic-input").is(":focus")) {
+        if (stream_list.is_zoomed_in() && $("#left-sidebar-filter-topic-input").is(":focus")) {
             topic_list.clear_topic_search(e);
             return true;
         }
@@ -1017,6 +1016,9 @@ export function process_hotkey(e, hotkey) {
             }
             return true;
         case "query_users":
+            if (page_params.is_spectator) {
+                return false;
+            }
             activity_ui.initiate_search();
             return true;
         case "search":
@@ -1143,14 +1145,17 @@ export function process_hotkey(e, hotkey) {
             message_scroll_state.set_keyboard_triggered_current_scroll(true);
             navigate.page_down();
             return true;
-        case "copy_with_c":
-            return copy_messages.copy_handler();
     }
 
     if (
         // Allow UI only features for spectators which they can perform.
         page_params.is_spectator &&
-        !["toggle_conversation_view", "show_lightbox", "toggle_sender_info"].includes(event_name)
+        ![
+            "toggle_conversation_view",
+            "show_lightbox",
+            "toggle_sender_info",
+            "edit_message",
+        ].includes(event_name)
     ) {
         spectators.login_to_access();
         return true;

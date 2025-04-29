@@ -995,6 +995,14 @@ export function is_active_user_for_popover(user_id: number): boolean {
     //       deactivated users at page-load time. For now just warn.
     if (!people_by_user_id_dict.has(user_id)) {
         blueslip.warn("Unexpectedly invalid user_id in user popover query", {user_id});
+        // We return true for inaccessible users. We can assume
+        // this code will not be called for invalid IDs.
+        return true;
+    }
+
+    const user = people_by_user_id_dict.get(user_id)!;
+    if (user.is_inaccessible_user) {
+        return true;
     }
 
     return false;
@@ -1237,9 +1245,7 @@ export function build_termlet_matcher(termlet: string): (user: User) => boolean 
         let full_name = user.full_name;
         // Only ignore diacritics if the query is plain ascii
         if (is_ascii) {
-            if (user.name_with_diacritics_removed === undefined) {
-                user.name_with_diacritics_removed = typeahead.remove_diacritics(full_name);
-            }
+            user.name_with_diacritics_removed ??= typeahead.remove_diacritics(full_name);
             full_name = user.name_with_diacritics_removed;
         }
         const names = full_name.toLowerCase().split(" ");
@@ -1434,7 +1440,13 @@ export function _add_user(person: User): void {
         our realm (like cross-realm bots).
     */
     person.is_moderator = false;
-    if (person.role === settings_config.user_role_values.moderator.code) {
+    if (
+        [
+            settings_config.user_role_values.moderator.code,
+            settings_config.user_role_values.admin.code,
+            settings_config.user_role_values.owner.code,
+        ].includes(person.role)
+    ) {
         person.is_moderator = true;
     }
     if (person.user_id) {
@@ -1460,8 +1472,15 @@ export function add_active_user(person: User): void {
     non_active_user_dict.delete(person.user_id);
 }
 
-export const is_person_active = (user_id: number): boolean => {
+export const is_person_active = (
+    user_id: number,
+    allow_missing_user = !settings_data.user_can_access_all_other_users(),
+): boolean => {
     if (!people_by_user_id_dict.has(user_id)) {
+        if (allow_missing_user) {
+            // We consider all inaccessible users as active.
+            return true;
+        }
         blueslip.error("No user found", {user_id});
     }
 
@@ -1576,11 +1595,7 @@ export function get_user_by_id_assert_valid(
         return get_by_user_id(user_id);
     }
 
-    let person = maybe_get_user_by_id(user_id, true);
-    if (person === undefined) {
-        person = add_inaccessible_user(user_id);
-    }
-    return person;
+    return maybe_get_user_by_id(user_id, true) ?? add_inaccessible_user(user_id);
 }
 
 function get_involved_people(message: MessageWithBooleans): DisplayRecipientUser[] {
@@ -1777,6 +1792,13 @@ export function get_custom_fields_by_type(
 
 export function is_my_user_id(user_id: number): boolean {
     return user_id === my_user_id;
+}
+
+export function is_direct_message_conversation_with_self(user_ids: number[]): boolean {
+    if (user_ids.length === 1) {
+        return is_my_user_id(user_ids[0]!);
+    }
+    return false;
 }
 
 export function compare_by_name(a: User, b: User): number {

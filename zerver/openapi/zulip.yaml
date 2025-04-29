@@ -916,6 +916,16 @@ paths:
                                     The IDs of the channels from which the users have been
                                     unsubscribed from.
 
+                                    When a user is deactivated, the server will send this event
+                                    removing the user's subscriptions before the `realm_user` event
+                                    for the user's deactivation.
+
+                                    **Changes**: Before Zulip 10.0 (feature level 377), this event
+                                    was not sent on user deactivation. Clients supporting older
+                                    server versions and maintaining peer subscriber data need to
+                                    remove all channel subscriptions for a user when processing the
+                                    `realm_user` event with `op="remove"`.
+
                                     **Changes**: New in Zulip 4.0 (feature level 35), replacing
                                     the `stream_id` integer.
                                   items:
@@ -1286,11 +1296,19 @@ paths:
                                 private channel is made public, or a guest user is subscribed
                                 to a public (or private) channel.
 
+                                This event is also sent when a channel is unarchived but only
+                                to clients that did not declare the `archived_channels` [client
+                                capability][client-capabilities].
+
                                 Note that organization administrators who are not subscribed will
                                 not be able to see content on the channel; just that it exists.
 
-                                **Changes**: Prior to Zulip 8.0 (feature level 220), this event was
-                                incorrectly not sent to guest users a web-public channel was created.
+                                **Changes**: Prior to Zulip 11.0 (feature level 378), this
+                                event was sent to all the users who could see the channel when it
+                                was unarchived.
+
+                                Prior to Zulip 8.0 (feature level 220), this event was incorrectly
+                                not sent to guest users a web-public channel was created.
 
                                 Prior to Zulip 8.0 (feature level 205), this event was not sent
                                 when a user gained access to a channel due to their role changing.
@@ -1353,16 +1371,23 @@ paths:
                                 }
                             - type: object
                               description: |
-                                Event sent to all users who can see a channel when it is deactivated.
-
-                                This event is also sent when a user loses access to a channel they
-                                previously [could access](/help/channel-permissions) because they
-                                are unsubscribed from a private channel or their [role](/help/user-roles)
+                                Event sent when a user loses access to a channel they previously
+                                [could access](/help/channel-permissions) because they are
+                                unsubscribed from a private channel or their [role](/help/user-roles)
                                 has changed.
 
-                                **Changes**: Prior to Zulip 8.0 (feature level 205), this event was
-                                not sent when a user lost access to a channel due to their role
-                                changing.
+                                This event is also sent when a channel is archived but only
+                                to clients that did not declare the `archived_channels` [client
+                                capability][client-capabilities].
+
+                                **Changes**: Prior to Zulip 11.0 (feature level 378), this
+                                event was sent to all the users who could see the channel when it
+                                was archived.
+
+                                Prior to Zulip 8.0 (feature level 205), this event was not sent
+                                when a user lost access to a channel due to their role changing.
+
+                                [client-capabilities]: /api/register-queue#parameter-client_capabilities
                               properties:
                                 id:
                                   $ref: "#/components/schemas/EventIdSchema"
@@ -1419,10 +1444,21 @@ paths:
                                 [GET /streams](/api/get-streams#response) response
                                 for details on the various properties of a channel.
 
-                                **Changes**: Before Zulip 9.0 (feature level 256), this event
-                                was never sent when the `first_message_id` property of a channel
-                                was updated because the oldest message that had been sent to it
+                                This event is also sent when archiving or unarchiving a
+                                channel to all the users who can see that channel exists
+                                but only to the clients that declared the `archived_channels`
+                                [client capability][client-capabilities].
+
+                                **Changes**: Prior to Zulip 11.0 (feature level 378),
+                                this event was never sent when archiving or unarchiving
+                                a channel.
+
+                                Before Zulip 9.0 (feature level 256), this event was never
+                                sent when the `first_message_id` property of a channel was
+                                updated because the oldest message that had been sent to it
                                 changed.
+
+                                [client-capabilities]: /api/register-queue#parameter-client_capabilities
                               properties:
                                 id:
                                   $ref: "#/components/schemas/EventIdSchema"
@@ -6640,14 +6676,17 @@ paths:
                     [`POST /register`](/api/register-queue) endpoint to determine
                     the maximum topic length.
 
-                    Note: When the value of `realm_empty_topic_display_name` found in
-                    the [POST /register](/api/register-queue) response is used for this
+                    Note: When `"(no topic)"` or the value of `realm_empty_topic_display_name`
+                    found in the [POST /register](/api/register-queue) response is used for this
                     parameter, it is interpreted as an empty string.
 
                     When [topics are required](/help/require-topics), this parameter can't
                     be `"(no topic)"`, an empty string, or the value of `realm_empty_topic_display_name`.
 
-                    **Changes**: Before Zulip 10.0 (feature level 334), empty string
+                    **Changes**: Before Zulip 10.0 (feature level 370), `"(no topic)"`
+                    was not interpreted as an empty string.
+
+                    Before Zulip 10.0 (feature level 334), empty string
                     was not a valid topic name for channel messages.
                   type: string
                   example: Castle
@@ -6814,14 +6853,17 @@ paths:
                     [`POST /register`](/api/register-queue) endpoint to determine
                     the maximum topic length.
 
-                    Note: When the value of `realm_empty_topic_display_name` found in
-                    the [POST /register](/api/register-queue) response is used for this
+                    Note: When `"(no topic)"` or the value of `realm_empty_topic_display_name`
+                    found in the [POST /register](/api/register-queue) response is used for this
                     parameter, it is interpreted as an empty string.
 
                     When [topics are required](/help/require-topics), this parameter can't
                     be `"(no topic)"`, an empty string, or the value of `realm_empty_topic_display_name`.
 
-                    **Changes**: Before Zulip 10.0 (feature level 334), empty string
+                    **Changes**: Before Zulip 10.0 (feature level 370), `"(no topic)"`
+                    was not interpreted as an empty string.
+
+                    Before Zulip 10.0 (feature level 334), empty string
                     was not a valid topic name for channel messages.
                   type: string
                   example: Castle
@@ -7503,14 +7545,17 @@ paths:
                     [`POST /register`](/api/register-queue) endpoint to determine
                     the maximum topic length.
 
-                    Note: When the value of `realm_empty_topic_display_name` found in
-                    the [POST /register](/api/register-queue) response is used for this
+                    Note: When `"(no topic)"` or the value of `realm_empty_topic_display_name`
+                    found in the [POST /register](/api/register-queue) response is used for this
                     parameter, it is interpreted as an empty string.
 
                     When [topics are required](/help/require-topics), this parameter can't
                     be `"(no topic)"`, an empty string, or the value of `realm_empty_topic_display_name`.
 
-                    **Changes**: Before Zulip 10.0 (feature level 334), empty string
+                    **Changes**: Before Zulip 10.0 (feature level 370), `"(no topic)"`
+                    was not interpreted as an empty string.
+
+                    Before Zulip 10.0 (feature level 334), empty string
                     was not a valid topic name for channel messages.
 
                     New in Zulip 2.0.0. Previous Zulip releases encoded
@@ -8957,6 +9002,20 @@ paths:
                   example: true
                 content:
                   $ref: "#/components/schemas/OptionalContent"
+                prev_content_sha256:
+                  description: |
+                    An optional SHA-256 hash of the previous raw content of the message
+                    that the client has at the time of the request.
+
+                    If provided, the server will return an error if it does not match the
+                    SHA-256 hash of the message's content stored in the database.
+
+                    Clients can use this feature to prevent races where multiple clients
+                    save conflicting edits to a message.
+
+                    **Changes**: New in Zulip 11.0 (feature level 379).
+                  type: string
+                  example: "6ae8a75555209fd6c44157c0aed8016e763ff435a19cf186f76863140143ff72" # "test content"
                 stream_id:
                   description: |
                     The channel ID to move the message(s) to, to request moving
@@ -14911,6 +14970,8 @@ paths:
                       realm_date_created:
                         type: integer
                         description: |
+                          Present if `realm` is present in `fetch_event_types`.
+
                           The UNIX timestamp (UTC) for when the organization was
                           created.
 
@@ -14918,7 +14979,8 @@ paths:
                       demo_organization_scheduled_deletion_date:
                         type: integer
                         description: |
-                          Present if the realm is a demo organization.
+                          Present if `realm` is present in `fetch_event_types`,
+                          and the realm is a demo organization.
 
                           The UNIX timestamp (UTC) when the demo organization will be
                           automatically deleted. Clients should use this to display a
@@ -15045,6 +15107,8 @@ paths:
                       server_presence_ping_interval_seconds:
                         type: integer
                         description: |
+                          Present if `realm` is present in `fetch_event_types`.
+
                           For clients implementing the [presence](/api/get-presence) system,
                           the time interval the client should use for sending presence requests
                           to the server (and thus receive presence updates from the server).
@@ -15060,6 +15124,8 @@ paths:
                       server_presence_offline_threshold_seconds:
                         type: integer
                         description: |
+                          Present if `realm` is present in `fetch_event_types`.
+
                           How old a presence timestamp for a given user can be before the user
                           should be displayed as offline by clients displaying Zulip presence
                           data. See the related `server_presence_ping_interval_seconds` for details.
@@ -15070,6 +15136,8 @@ paths:
                       server_typing_started_expiry_period_milliseconds:
                         type: integer
                         description: |
+                          Present if `realm` is present in `fetch_event_types`.
+
                           For clients implementing [typing notifications](/api/set-typing-status)
                           protocol, the time interval in milliseconds that the client should wait
                           for additional [typing start](/api/get-events#typing-start) events from
@@ -15081,6 +15149,8 @@ paths:
                       server_typing_stopped_wait_period_milliseconds:
                         type: integer
                         description: |
+                          Present if `realm` is present in `fetch_event_types`.
+
                           For clients implementing [typing notifications](/api/set-typing-status)
                           protocol, the time interval in milliseconds that the client should wait
                           when a user stops interacting with the compose UI before sending a stop
@@ -15092,6 +15162,8 @@ paths:
                       server_typing_started_wait_period_milliseconds:
                         type: integer
                         description: |
+                          Present if `realm` is present in `fetch_event_types`.
+
                           For clients implementing [typing notifications](/api/set-typing-status)
                           protocol, the time interval in milliseconds that the client should use
                           to send regular start notifications to the server to indicate that the
@@ -15724,8 +15796,12 @@ paths:
                           For organization administrators, this will include all private channels
                           in the organization.
 
-                          **Changes**: As of Zulip 8.0 (feature level 205), this will include all
-                          web-public channels in the organization as well.
+                          **Changes**: Before Zulip 11.0 (feature level 378), archived channels
+                          did not appear in this list, even if the `archived_channels` [client
+                          capability][client-capabilities] was declared by the client.
+
+                          As of Zulip 8.0 (feature level 205), this will include all web-public
+                          channels in the organization as well.
                       realm_default_streams:
                         type: array
                         items:
@@ -17014,6 +17090,8 @@ paths:
                       realm_message_edit_history_visibility_policy:
                         type: string
                         description: |
+                          Present if `realm` is present in `fetch_event_types`.
+
                           What typesof message edit history are accessible to users via
                           [message edit history](/help/view-a-messages-edit-history).
 
@@ -17059,6 +17137,8 @@ paths:
                       realm_can_add_subscribers_group:
                         allOf:
                           - description: |
+                              Present if `realm` is present in `fetch_event_types`.
+
                               A [group-setting value](/api/group-setting-values) defining the set of
                               users who have permission to add subscribers to channels in the organization.
 
@@ -17161,6 +17241,8 @@ paths:
                         allOf:
                           - $ref: "#/components/schemas/GroupSettingValue"
                           - description: |
+                              Present if `realm` is present in `fetch_event_types`.
+
                               A [group-setting value](/api/group-setting-values) defining
                               the set of users who have permission to create user
                               groups in this organization.
@@ -17172,6 +17254,8 @@ paths:
                         allOf:
                           - $ref: "#/components/schemas/GroupSettingValue"
                           - description: |
+                              Present if `realm` is present in `fetch_event_types`.
+
                               A [group-setting value](/api/group-setting-values) defining
                               the set of users who have permission to create all types of bot users
                               in the organization. See also `can_create_write_only_bots_group`.
@@ -17183,6 +17267,8 @@ paths:
                         allOf:
                           - $ref: "#/components/schemas/GroupSettingValue"
                           - description: |
+                              Present if `realm` is present in `fetch_event_types`.
+
                               A [group-setting value](/api/group-setting-values) defining
                               the set of users who have permission to create bot users that
                               can only send messages in the organization, i.e. incoming webhooks,
@@ -17195,6 +17281,8 @@ paths:
                         allOf:
                           - $ref: "#/components/schemas/GroupSettingValue"
                           - description: |
+                              Present if `realm` is present in `fetch_event_types`.
+
                               A [group-setting value](/api/group-setting-values)
                               defining the set of users who have permission to
                               administer all existing groups in this organization.
@@ -17220,6 +17308,8 @@ paths:
                         allOf:
                           - $ref: "#/components/schemas/GroupSettingValue"
                           - description: |
+                              Present if `realm` is present in `fetch_event_types`.
+
                               A [group-setting value](/api/group-setting-values) defining the set of
                               users who have permission to manage plans and billing in the organization.
 
@@ -17230,6 +17320,8 @@ paths:
                         allOf:
                           - $ref: "#/components/schemas/GroupSettingValue"
                           - description: |
+                              Present if `realm` is present in `fetch_event_types`.
+
                               A [group-setting value](/api/group-setting-values) defining
                               the set of users who have permission to create public
                               channels in this organization.
@@ -17241,6 +17333,8 @@ paths:
                         allOf:
                           - $ref: "#/components/schemas/GroupSettingValue"
                           - description: |
+                              Present if `realm` is present in `fetch_event_types`.
+
                               A [group-setting value](/api/group-setting-values) defining
                               the set of users who have permission to create private
                               channels in this organization.
@@ -17252,6 +17346,8 @@ paths:
                         allOf:
                           - $ref: "#/components/schemas/GroupSettingValue"
                           - description: |
+                              Present if `realm` is present in `fetch_event_types`.
+
                               A [group-setting value](/api/group-setting-values) defining
                               the set of users who have permission to create web-public
                               channels in this organization.
@@ -17267,6 +17363,8 @@ paths:
                       realm_can_resolve_topics_group:
                         allOf:
                           - description: |
+                              Present if `realm` is present in `fetch_event_types`.
+
                               A [group-setting value](/api/group-setting-values) defining
                               the set of users who have permission to [resolve topics](/help/resolve-a-topic)
                               in the organization.
@@ -17442,6 +17540,8 @@ paths:
                         allOf:
                           - $ref: "#/components/schemas/GroupSettingValue"
                           - description: |
+                              Present if `realm` is present in `fetch_event_types`.
+
                               A [group-setting value](/api/group-setting-values) defining the
                               set of users who are allowed to create [reusable invitation
                               links](/help/invite-new-users#create-a-reusable-invitation-link)
@@ -17494,6 +17594,8 @@ paths:
                       realm_require_unique_names:
                         type: boolean
                         description: |
+                          Present if `realm` is present in `fetch_event_types`.
+
                           Indicates whether the organization is configured to require users
                           to have unique full names. If true, the server will reject attempts
                           to create a new user, or change the name of an existing user, where
@@ -17579,6 +17681,8 @@ paths:
                       realm_video_chat_provider:
                         type: integer
                         description: |
+                          Present if `realm` is present in `fetch_event_types`.
+
                           The configured [video call provider](/help/configure-call-provider) for the
                           organization.
 
@@ -17602,6 +17706,8 @@ paths:
                         type: string
                         nullable: true
                         description: |
+                          Present if `realm` is present in `fetch_event_types`.
+
                           The URL of the custom Jitsi Meet server configured in this organization's
                           settings.
 
@@ -17641,6 +17747,8 @@ paths:
                       realm_direct_message_initiator_group:
                         allOf:
                           - description: |
+                              Present if `realm` is present in `fetch_event_types`.
+
                               A [group-setting value](/api/group-setting-values) defining the set of
                               users who have permission to start a new direct message conversation
                               involving other non-bot users. Users who are outside this group and attempt
@@ -17656,6 +17764,8 @@ paths:
                       realm_direct_message_permission_group:
                         allOf:
                           - description: |
+                              Present if `realm` is present in `fetch_event_types`.
+
                               A [group-setting value](/api/group-setting-values) defining the set of
                               users who have permission to fully use direct messages. Users outside
                               this group can only send direct messages to conversations where all the
@@ -18070,6 +18180,8 @@ paths:
                         allOf:
                           - $ref: "#/components/schemas/GroupSettingValue"
                           - description: |
+                              Present if `realm` is present in `fetch_event_types`.
+
                               A [group-setting value](/api/group-setting-values) defining the
                               set of users who are allowed to access all users in the
                               organization.
@@ -18082,6 +18194,8 @@ paths:
                         allOf:
                           - $ref: "#/components/schemas/GroupSettingValue"
                           - description: |
+                              Present if `realm` is present in `fetch_event_types`.
+
                               A [group-setting value](/api/group-setting-values) defining the
                               set of users who are allowed to use AI summarization.
 
@@ -18259,6 +18373,8 @@ paths:
                           that feature.
                       server_thumbnail_formats:
                         description: |
+                          Present if `realm` is present in `fetch_event_types`.
+
                           A list describing the image formats that uploaded
                           images will be thumbnailed into. Any image with a
                           source starting with `/user_uploads/thumbnail/` can
@@ -18359,6 +18475,8 @@ paths:
                         type: string
                         nullable: true
                         description: |
+                          Present if `realm` is present in `fetch_event_types`.
+
                           The URL of the Jitsi server that the Zulip server is configured to use by
                           default; the organization-level setting `realm_jitsi_server_url` takes
                           precedence over this setting when both are set.
@@ -18408,6 +18526,8 @@ paths:
                       realm_moderation_request_channel_id:
                         type: integer
                         description: |
+                          Present if `realm` is present in `fetch_event_types`.
+
                           The ID of the private channel to which messages flagged by users for
                           moderation are sent. Moderators can use this channel to review and
                           act on reported content.
@@ -19088,7 +19208,7 @@ paths:
                         description: |
                           Present if `realm_user` is present in `fetch_event_types`.
 
-                          Whether the current user is an [organization administrator](/api/roles-and-permissions).
+                          Whether the current user is at least an [organization administrator](/api/roles-and-permissions).
                       is_owner:
                         type: boolean
                         description: |
@@ -19102,9 +19222,12 @@ paths:
                         description: |
                           Present if `realm_user` is present in `fetch_event_types`.
 
-                          Whether the current user is an [organization moderator](/api/roles-and-permissions).
+                          Whether the current user is at least an [organization moderator](/api/roles-and-permissions).
 
-                          **Changes**: New in Zulip 4.0 (feature level 60).
+                          **Changes**: Prior to Zulip 11.0 (feature level 380), this was only true
+                          for users whose role was exactly the moderator role.
+
+                          New in Zulip 4.0 (feature level 60).
                       is_guest:
                         type: boolean
                         description: |
@@ -21410,11 +21533,14 @@ paths:
                     Topic to which message is being typed. Required for the `"stream"` or `"channel"`
                     type. Ignored in the case of `"direct"` type.
 
-                    Note: When the value of `realm_empty_topic_display_name` found in
-                    the [POST /register](/api/register-queue) response is used for this
+                    Note: When `"(no topic)"` or the value of `realm_empty_topic_display_name`
+                    found in the [POST /register](/api/register-queue) response is used for this
                     parameter, it is interpreted as an empty string.
 
-                    **Changes**: Before Zulip 10.0 (feature level 334), empty string
+                    **Changes**: Before Zulip 10.0 (feature level 372),
+                    `"(no topic)"` was not interpreted as an empty string.
+
+                    Before Zulip 10.0 (feature level 334), empty string
                     was not a valid topic name for channel messages.
 
                     New in Zulip 4.0 (feature level 58). Previously, typing notifications

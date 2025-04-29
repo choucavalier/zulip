@@ -161,6 +161,8 @@ const COLUMNS = {
 let col_focus = COLUMNS.COLLAPSE_BUTTON;
 let row_focus = 0;
 
+let hide_other_views_callback: (() => void) | undefined;
+
 const ls_filter_key = "inbox-filters";
 const ls_collapsed_containers_key = "inbox_collapsed_containers";
 
@@ -189,6 +191,8 @@ function save_data_to_ls(): void {
 }
 
 export function show(): void {
+    assert(hide_other_views_callback !== undefined);
+    hide_other_views_callback();
     // Avoid setting col_focus to recipient when moving to inbox from other narrows.
     // We prefer to focus entire row instead of stream name for inbox-header.
     // Since inbox-row doesn't has a collapse button, focus on COLUMNS.COLLAPSE_BUTTON
@@ -231,6 +235,9 @@ export function show(): void {
 }
 
 export function hide(): void {
+    if (!is_visible()) {
+        return;
+    }
     views_util.hide({
         $view: $("#inbox-view"),
         set_visible,
@@ -875,30 +882,35 @@ export function revive_current_focus(): void {
 }
 
 function update_closed_compose_text($row: JQuery, is_header_row: boolean): void {
-    // TODO: This fake "message" object is designed to allow using the
-    // get_recipient_label helper inside compose_closed_ui. Surely
-    // there's a more readable way to write this code.
-    // Similar code is present in recent view.
-
     if (is_header_row) {
         compose_closed_ui.set_standard_text_for_reply_button();
         return;
     }
 
-    let message;
+    let reply_recipient_information: compose_closed_ui.ReplyRecipientInformation;
     const is_dm = $row.parent("#inbox-direct-messages-container").length > 0;
     if (is_dm) {
-        message = {
-            display_reply_to: $row.find(".recipients_name").text(),
-        };
+        const $recipients_info = $row.find(".recipients_info");
+        const narrow_url = $recipients_info.attr("href");
+        assert(narrow_url !== undefined);
+        const recipient_ids = hash_util.decode_dm_recipient_user_ids_from_narrow_url(narrow_url);
+        if (recipient_ids) {
+            reply_recipient_information = {
+                user_ids: recipient_ids,
+            };
+        } else {
+            reply_recipient_information = {
+                display_reply_to: $recipients_info.text(),
+            };
+        }
     } else {
         const $stream = $row.parent(".inbox-topic-container").prev(".inbox-header");
-        message = {
+        reply_recipient_information = {
             stream_id: Number($stream.attr("data-stream-id")),
             topic: $row.find(".inbox-topic-name a").text(),
         };
     }
-    compose_closed_ui.update_reply_recipient_label(message);
+    compose_closed_ui.update_recipient_text_for_reply_button(reply_recipient_information);
 }
 
 export function get_focused_row_message(): {message?: Message | undefined} & (
@@ -947,24 +959,22 @@ export function get_focused_row_message(): {message?: Message | undefined} & (
         return {message};
     }
 
-    const $stream = $focused_row.parent(".inbox-topic-container").parent();
-    const stream_key = $stream.attr("id");
-    assert(stream_key !== undefined);
-    const row_info = topics_dict.get(stream_key)!.get(conversation_key);
-    assert(row_info !== undefined);
-    const message = message_store.get(row_info.latest_msg_id);
+    // Last case: focused on a topic row.
     // Since inbox is populated based on unread data which is part
     // of /register request, it is possible that we don't have the
     // actual message in our message_store. In that case, we return
     // a fake message object.
-    if (message === undefined) {
-        return {
-            msg_type: "stream",
-            stream_id: row_info.stream_id,
-            topic: row_info.topic_name,
-        };
-    }
-    return {message};
+    const $topic_menu_elt = $focused_row.find(".inbox-topic-menu");
+    const topic = $topic_menu_elt.attr("data-topic-name");
+    assert(topic !== undefined);
+    const stream_id = Number($topic_menu_elt.attr("data-stream-id"));
+    assert(stream_id !== undefined);
+
+    return {
+        msg_type: "stream",
+        stream_id,
+        topic,
+    };
 }
 
 export function toggle_topic_visibility_policy(): boolean {
@@ -1014,8 +1024,8 @@ function set_list_focus(input_key?: string): void {
     // This includes a fake collapse button for `inbox-row` and a fake topic visibility
     // button for `inbox-header`. The fake buttons help simplify code here and
     // `$($cols_to_focus[col_focus]).trigger("focus");` at the end of this function.
-    const $cols_to_focus = [$row_to_focus, ...$row_to_focus.find("[tabindex=0]")];
-    const total_cols = $cols_to_focus.length;
+    const cols_to_focus = [row_to_focus, ...$row_to_focus.find("[tabindex=0]")];
+    const total_cols = cols_to_focus.length;
     current_focus_id = $row_to_focus.attr("id");
     const is_header_row = is_row_a_header($row_to_focus);
     update_closed_compose_text($row_to_focus, is_header_row);
@@ -1062,7 +1072,29 @@ function set_list_focus(input_key?: string): void {
         }
     }
 
-    const col_to_focus = $cols_to_focus[col_focus];
+    // Focus on appropriate button if the is row has no unreads but
+    // `col_focus` is set to `UNREAD_COUNT` column.
+    if (!is_header_row && col_focus === COLUMNS.UNREAD_COUNT) {
+        const row_has_unreads = cols_to_focus.some((col) =>
+            col.classList.contains("unread-count-focus-outline"),
+        );
+        if (!row_has_unreads) {
+            if (input_key !== undefined && RIGHT_NAVIGATION_KEYS.includes(input_key)) {
+                col_focus = COLUMNS.TOPIC_VISIBILITY;
+            } else if (input_key !== undefined && LEFT_NAVIGATION_KEYS.includes(input_key)) {
+                // Focus on entire row.
+                col_focus = COLUMNS.COLLAPSE_BUTTON;
+            } else {
+                // up / down arrow
+                // Focus on the entire row without changing `col_focus` so that
+                // we can focus on unread count button if the next row has one.
+                $row_to_focus.trigger("focus");
+                return;
+            }
+        }
+    }
+
+    const col_to_focus = cols_to_focus[col_focus];
     assert(col_to_focus !== undefined);
     $(col_to_focus).trigger("focus");
 }
@@ -1507,7 +1539,8 @@ export function is_in_focus(): boolean {
     return is_visible() && views_util.is_in_focus();
 }
 
-export function initialize(): void {
+export function initialize({hide_other_views}: {hide_other_views: () => void}): void {
+    hide_other_views_callback = hide_other_views;
     $(document).on(
         "scroll",
         _.throttle(() => {

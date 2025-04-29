@@ -166,6 +166,7 @@ S3_UPLOADS_STORAGE_CLASS: Literal[
     "STANDARD_IA",
 ] = "STANDARD"
 S3_AVATAR_PUBLIC_URL_PREFIX: str | None = None
+S3_SKIP_CHECKSUM: bool = False
 LOCAL_UPLOADS_DIR: str | None = None
 LOCAL_AVATARS_DIR: str | None = None
 LOCAL_FILES_DIR: str | None = None
@@ -258,6 +259,7 @@ RATE_LIMIT_TOR_TOGETHER = False
 SEND_LOGIN_EMAILS = True
 EMBEDDED_BOTS_ENABLED = False
 
+USING_CAPTCHA = False
 DEFAULT_RATE_LIMITING_RULES = {
     # Limits total number of API requests per unit time by each user.
     # Rate limiting general API access protects the server against
@@ -447,6 +449,13 @@ EMAIL_BACKEND: str | None = None
 # Whether to give admins a warning in the web app that email isn't set up.
 # Set in settings.py when email isn't configured.
 WARN_NO_EMAIL = False
+
+# If enabled, all email-sending will happen in the worker.  This means
+# that the UI cannot display configuration errors which prevented
+# email sending, so this is usually left off except in
+# well-established deployments which know the configuration is
+# correct.
+EMAIL_ALWAYS_ENQUEUED = False
 
 # If True, disable rate-limiting and other filters on sending error messages
 # to admins, and enable logging on the error-reporting itself.  Useful
@@ -714,3 +723,6 @@ MAX_PER_USER_MONTHLY_AI_COST: float | None = 0.5
 NAVIGATION_TOUR_VIDEO_URL: str | None = (
     "https://static.zulipchat.com/static/navigation-tour-video/zulip-10.mp4"
 )
+
+# Webhook signature verification.
+VERIFY_WEBHOOK_SIGNATURES = True

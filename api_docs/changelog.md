@@ -18,7 +18,61 @@ clients should check the `zulip_feature_level` field, present in the
 /register`](/api/register-queue) responses, to determine the API
 format used by the Zulip server that they are interacting with.
 
+## Changes in Zulip 11.0
+
+**Feature level 380**
+
+* [`POST /register`](/api/register-queue), [`GET
+  /events`](/api/get-events): The `is_moderator` convenience field now
+  is true for organization administrators, matching how `is_admin`
+  works for organization owners.
+
+**Feature level 379**
+
+* [`PATCH /messages/{message_id}`](/api/update-message): Added
+ optional parameter `prev_content_sha256`, which clients can use to
+ prevent races with the message being edited by another client.
+
+**Feature level 378**
+
+* [`GET /events`](/api/get-events): Archiving and unarchiving
+  streams now send `update` events to clients that declared
+  the `archived_channels` client capability. `delete` and `create`
+  events are still sent to clients that did not declare
+  `archived_channels` client capability.
+* [`POST /register`](/api/register-queue): The `streams` data
+  structure now includes archived channels for clients that
+  declared the `archived_channels` client capability.
+
+**Feature level 377**
+
+* [`GET /events`](/api/get-events): When a user is deactivate, send
+  `peer_remove` event to all the subscribers of the streams that the
+  user was subscribed to.
+
+Feature levels 373-376 reserved for future use in 10.x maintenance
+releases.
+
+## Changes in Zulip 10.1
+
+**Feature level 372**
+
+* [`POST /typing`](/api/set-typing-status): The `"(no topic)"` value
+  when used for `topic` parameter is now interpreted as an empty string.
+
 ## Changes in Zulip 10.0
+
+**Feature level 371**
+
+No changes; feature level used for Zulip 10.0 release.
+
+**Feature level 370**
+
+* [`POST /messages`](/api/send-message),
+  [`POST /scheduled_messages`](/api/create-scheduled-message),
+  [`PATCH /scheduled_messages/<int:scheduled_message_id>`](/api/update-scheduled-message):
+  The `"(no topic)"` value when used for `topic` parameter is
+  now interpreted as an empty string.
 
 **Feature level 369**
 
@@ -1004,10 +1058,10 @@ deactivated groups.
   now contains the superset of the true value that best approximates the actual
   permission setting.
 
-Feature levels 278-279 are reserved for future use in 9.x maintenance
+Feature level 279 is reserved for future use in 9.x maintenance
 releases.
 
-## Changes in Zulip 9.0
+## Changes in Zulip 9.2
 
 **Feature level 278**
 
@@ -1016,6 +1070,8 @@ releases.
   `data-original-dimensions` attributes to placeholder images
   (`image-loading-placeholder`), containing the dimensions of the
   original image. Backported change from feature level 287.
+
+## Changes in Zulip 9.0
 
 **Feature level 277**
 

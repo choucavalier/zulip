@@ -212,8 +212,10 @@ export const default_popover_props: Partial<tippy.Props> = {
                 phase: "beforeWrite",
                 requires: ["$$tippy"],
                 fn({state}) {
+                    // Since the reference element can be removed from DOM, we rely on popper
+                    // here to access the tippy instance which is reliable.
                     // eslint-disable-next-line @typescript-eslint/consistent-type-assertions
-                    const instance = (state.elements.reference as tippy.ReferenceElement)._tippy!;
+                    const instance = (state.elements.popper as tippy.PopperElement)._tippy!;
                     const $popover = $(state.elements.popper);
                     const $tippy_box = $popover.find(".tippy-box");
                     // $tippy_box[0].hasAttribute("data-reference-hidden"); is the real check
@@ -416,6 +418,12 @@ export function toggle_popover_menu(
 ): tippy.Instance {
     const instance = target._tippy;
     if (instance) {
+        // Ideally, we'd check that the _tippy object is a
+        // popover. For elements that host both a Tippy tooltip and a
+        // popover, this can incorrectly return early after hiding the
+        // Tippy tooltip.
+        //
+        // If we fix this, we can remove a few popovers.hide_all calls.
         hide_current_popover_if_visible(instance);
         return instance;
     }

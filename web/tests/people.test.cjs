@@ -122,7 +122,7 @@ const realm_admin = {
     is_owner: false,
     is_admin: true,
     is_guest: false,
-    is_moderator: false,
+    is_moderator: true,
     is_bot: false,
     role: 200,
 };
@@ -146,7 +146,7 @@ const realm_owner = {
     is_owner: true,
     is_admin: true,
     is_guest: false,
-    is_moderator: false,
+    is_moderator: true,
     is_bot: false,
     role: 100,
 };
@@ -416,9 +416,13 @@ test_people("basics", ({override}) => {
     // The bot doesn't add to our human count.
     assert.equal(people.get_active_human_count(), 1);
 
-    // Invalid user ID returns false and warns.
+    // Invalid user ID returns true and warns.
     blueslip.expect("warn", "Unexpectedly invalid user_id in user popover query");
-    assert.equal(people.is_active_user_for_popover(123412), false);
+    assert.equal(people.is_active_user_for_popover(123412), true);
+
+    unknown_user.is_inaccessible_user = true;
+    assert.equal(people.is_active_user_for_popover(unknown_user.user_id), true);
+    unknown_user.is_inaccessible_user = false;
 
     // We can still get their info for non-realm needs.
     person = people.get_by_email(email);
@@ -473,7 +477,7 @@ test_people("sort_but_pin_current_user_on_top without me", () => {
     assert.deepEqual(users, [maria, steven]);
 });
 
-test_people("check_active_non_active_users", () => {
+test_people("check_active_non_active_users", ({override}) => {
     people.add_active_user(bot_botson);
     people.add_active_user(isaac);
 
@@ -507,6 +511,10 @@ test_people("check_active_non_active_users", () => {
     assert.equal(active_users.length, 4);
     assert.equal(people.is_person_active(maria.user_id), true);
     assert.equal(people.is_person_active(linus.user_id), false);
+
+    // If user cannot access a user, that user will be treated as active.
+    override(settings_data, "user_can_access_all_other_users", () => false);
+    assert.equal(people.is_person_active(99), true);
 });
 
 test_people("pm_lookup_key", () => {
@@ -682,7 +690,9 @@ test_people("user_type", () => {
     people.add_active_user(realm_admin);
     people.add_active_user(guest);
     people.add_active_user(realm_owner);
+    console.log("AAAaaAAAAAAAAA");
     people.add_active_user(moderator);
+    console.log("BABSDBSDBSDBBDSBSDB");
     people.add_active_user(bot_botson);
     assert.equal(people.get_user_type(me.user_id), $t({defaultMessage: "Member"}));
     assert.equal(people.get_user_type(realm_admin.user_id), $t({defaultMessage: "Administrator"}));

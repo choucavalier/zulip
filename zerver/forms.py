@@ -1,9 +1,12 @@
+import base64
 import logging
 import re
 from email.headerregistry import Address
 from typing import Any
 
 import dns.resolver
+import orjson
+from altcha import verify_solution
 from django import forms
 from django.conf import settings
 from django.contrib.auth import authenticate, password_validation
@@ -11,7 +14,10 @@ from django.contrib.auth.forms import AuthenticationForm, PasswordResetForm, Set
 from django.contrib.auth.tokens import PasswordResetTokenGenerator, default_token_generator
 from django.core.exceptions import ValidationError
 from django.core.validators import validate_email
+from django.forms.renderers import BaseRenderer
 from django.http import HttpRequest
+from django.utils.html import format_html
+from django.utils.safestring import SafeString
 from django.utils.translation import gettext as _
 from django.utils.translation import gettext_lazy
 from markupsafe import Markup
@@ -41,7 +47,12 @@ from zerver.models.realms import (
     get_realm,
 )
 from zerver.models.users import get_user_by_delivery_email, is_cross_realm_bot_email
-from zproject.backends import check_password_strength, email_auth_enabled, email_belongs_to_ldap
+from zproject.backends import (
+    check_password_strength,
+    email_auth_enabled,
+    email_belongs_to_ldap,
+    password_auth_enabled,
+)
 
 # We don't mark this error for translation, because it's displayed
 # only to MIT users.
@@ -248,6 +259,7 @@ class HomepageForm(forms.Form):
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         self.realm = kwargs.pop("realm", None)
         self.from_multiuse_invite = kwargs.pop("from_multiuse_invite", False)
+        self.require_password_backend = kwargs.pop("require_password_backend", False)
         self.invited_as = kwargs.pop("invited_as", None)
         super().__init__(*args, **kwargs)
 
@@ -267,12 +279,17 @@ class HomepageForm(forms.Form):
                 )
             )
 
-        if not from_multiuse_invite and realm.invite_required:
-            raise ValidationError(
-                _(
-                    "Please request an invite for {email} from the organization administrator."
-                ).format(email=email)
-            )
+        if not from_multiuse_invite:
+            if realm.invite_required:
+                raise ValidationError(
+                    _(
+                        "Please request an invite for {email} from the organization administrator."
+                    ).format(email=email)
+                )
+            if self.require_password_backend and not password_auth_enabled(realm):
+                raise ValidationError(
+                    _("Can't join the organization: password authentication is not enabled.")
+                )
 
         try:
             email_allowed_for_realm(email, realm)
@@ -320,6 +337,85 @@ class RealmCreationForm(RealmDetailsForm):
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         kwargs["realm_creation"] = True
         super().__init__(*args, **kwargs)
+
+
+class AltchaWidget(forms.TextInput):
+    @override
+    def render(
+        self,
+        name: str,
+        value: Any,
+        attrs: dict[str, Any] | None = None,
+        renderer: BaseRenderer | None = None,
+    ) -> SafeString:
+        return format_html(
+            (
+                "<altcha-widget"
+                '  name="captcha"'
+                '  challengeurl="/json/antispam_challenge"'
+                "  hidelogo"
+                "  hidefooter"
+                '  floating="bottom"'
+                "  refetchonexpire"
+                '  style="{}"'
+                '  strings="{}"'
+                ">"
+            ),
+            "--altcha-max-width: 300px;",
+            orjson.dumps(
+                {
+                    "verified": _("Verified that you're a human user!"),
+                    "verifying": _("Verifying that you're not a bot..."),
+                }
+            ).decode(),
+        )
+
+
+class CaptchaRealmCreationForm(RealmCreationForm):
+    captcha = forms.CharField(required=True, widget=AltchaWidget)
+
+    def __init__(
+        self,
+        *,
+        request: HttpRequest,
+        data: dict[str, Any] | None = None,
+        initial: dict[str, Any] | None = None,
+    ) -> None:
+        super().__init__(data=data, initial=initial)
+        self.request = request
+
+    @override
+    def clean(self) -> None:
+        if not self.data.get("captcha"):
+            self.add_error("captcha", _("Validation failed, please try again."))
+
+    def clean_captcha(self) -> str:
+        payload = self.data.get("captcha", "")
+
+        try:
+            ok, err = verify_solution(payload, settings.ALTCHA_HMAC_KEY, check_expires=True)
+            if not ok:
+                logging.warning("Invalid altcha solution: %s", err)
+                raise forms.ValidationError(_("Validation failed, please try again."))
+        except forms.ValidationError:
+            raise
+        except Exception as e:
+            logging.exception(e)
+            raise forms.ValidationError(_("Validation failed, please try again."))
+
+        payload = orjson.loads(base64.b64decode(payload))
+        challenge = payload["challenge"]
+        session_challenges = [e[0] for e in self.request.session.get("altcha_challenges", [])]
+        if challenge not in session_challenges:
+            logging.warning("Expired or replayed altcha solution")
+            raise forms.ValidationError(_("Validation failed, please try again."))
+
+        # Remove the successful solve from the session, to prevent replay
+        self.request.session["altcha_challenges"] = [
+            e for e in self.request.session.get("altcha_challenges", []) if e[0] != challenge
+        ]
+
+        return payload
 
 
 class LoggingSetPasswordForm(SetPasswordForm):

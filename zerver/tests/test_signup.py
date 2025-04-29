@@ -1,3 +1,4 @@
+import base64
 import re
 import time
 from collections.abc import Sequence
@@ -185,20 +186,14 @@ class DeactivationNoticeTestCase(ZulipTestCase):
         realm.save(update_fields=["deactivated", "deactivated_redirect"])
 
         result = self.client_get("/login/", follow=True)
-        self.assertIn(
-            'This organization has moved to <a href="http://example.zulipchat.com">http://example.zulipchat.com</a>.',
-            result.content.decode(),
-        )
+        self.assertIn(result.request.get("SERVER_NAME"), ["example.zulipchat.com"])
 
     def test_deactivation_notice_when_realm_subdomain_is_changed(self) -> None:
         realm = get_realm("zulip")
         do_change_realm_subdomain(realm, "new-subdomain-name", acting_user=None)
 
         result = self.client_get("/login/", follow=True)
-        self.assertIn(
-            'This organization has moved to <a href="http://new-subdomain-name.testserver">http://new-subdomain-name.testserver</a>.',
-            result.content.decode(),
-        )
+        self.assertIn(result.request.get("SERVER_NAME"), ["new-subdomain-name.testserver"])
 
     def test_no_deactivation_notice_with_no_redirect(self) -> None:
         realm = get_realm("zulip")
@@ -220,18 +215,12 @@ class DeactivationNoticeTestCase(ZulipTestCase):
         do_change_realm_subdomain(realm, "new-name-1", acting_user=None)
 
         result = self.client_get("/login/", follow=True)
-        self.assertIn(
-            'This organization has moved to <a href="http://new-name-1.testserver">http://new-name-1.testserver</a>.',
-            result.content.decode(),
-        )
+        self.assertIn(result.request.get("SERVER_NAME"), ["new-name-1.testserver"])
 
         realm = get_realm("new-name-1")
         do_change_realm_subdomain(realm, "new-name-2", acting_user=None)
         result = self.client_get("/login/", follow=True)
-        self.assertIn(
-            'This organization has moved to <a href="http://new-name-2.testserver">http://new-name-2.testserver</a>.',
-            result.content.decode(),
-        )
+        self.assertIn(result.request.get("SERVER_NAME"), ["new-name-2.testserver"])
 
 
 class AddNewUserHistoryTest(ZulipTestCase):
@@ -1040,8 +1029,8 @@ class LoginTest(ZulipTestCase):
         # to sending messages, such as getting the welcome bot, looking up
         # the alert words for a realm, etc.
         with (
-            self.assert_database_query_count(94),
-            self.assert_memcached_count(15),
+            self.assert_database_query_count(95),
+            self.assert_memcached_count(18),
             self.captureOnCommitCallbacks(execute=True),
         ):
             self.register(self.nonreg_email("test"), "test")
@@ -1478,6 +1467,21 @@ class RealmCreationTest(ZulipTestCase):
 
         with self.settings(OPEN_REALM_CREATION=False):
             # Create new realm with the email, but no creation key.
+            result = self.submit_realm_creation_form(
+                email, realm_subdomain="custom-test", realm_name="Zulip test"
+            )
+            self.assertEqual(result.status_code, 200)
+            self.assert_in_response("Organization creation link required", result)
+
+    @override_settings(OPEN_REALM_CREATION=True)
+    def test_create_realm_without_password_backend_enabled(self) -> None:
+        email = "user@example.com"
+        with self.settings(
+            AUTHENTICATION_BACKENDS=(
+                "zproject.backends.SAMLAuthBackend",
+                "zproject.backends.ZulipDummyBackend",
+            )
+        ):
             result = self.submit_realm_creation_form(
                 email, realm_subdomain="custom-test", realm_name="Zulip test"
             )
@@ -2216,6 +2220,89 @@ class RealmCreationTest(ZulipTestCase):
                 check_subdomain_available("we-are-zulip-team")
             check_subdomain_available("we-are-zulip-team", allow_reserved_subdomain=True)
 
+    @override_settings(OPEN_REALM_CREATION=True, USING_CAPTCHA=True, ALTCHA_HMAC_KEY="secret")
+    def test_create_realm_with_captcha(self) -> None:
+        string_id = "custom-test"
+        email = "user1@test.com"
+        realm_name = "Test"
+
+        # Make sure the realm does not exist
+        with self.assertRaises(Realm.DoesNotExist):
+            get_realm(string_id)
+
+        result = self.client_get("/new/")
+        self.assert_not_in_success_response(["Validation failed"], result)
+
+        # Without the CAPTCHA value, we get an error
+        result = self.submit_realm_creation_form(
+            email, realm_subdomain=string_id, realm_name=realm_name
+        )
+        self.assert_in_success_response(["Validation failed, please try again."], result)
+
+        # With an invalid value, we also get an error
+        with self.assertLogs(level="WARNING") as logs:
+            result = self.submit_realm_creation_form(
+                email, realm_subdomain=string_id, realm_name=realm_name, captcha="moose"
+            )
+            self.assert_in_success_response(["Validation failed, please try again."], result)
+            self.assert_length(logs.output, 1)
+            self.assertIn("Invalid altcha solution: Invalid altcha payload", logs.output[0])
+
+        # With something which raises an exception, we also get the same error
+        with self.assertLogs(level="WARNING") as logs:
+            result = self.submit_realm_creation_form(
+                email,
+                realm_subdomain=string_id,
+                realm_name=realm_name,
+                captcha=base64.b64encode(
+                    orjson.dumps(["algorithm", "challenge", "number", "salt", "signature"])
+                ).decode(),
+            )
+            self.assert_in_success_response(["Validation failed, please try again."], result)
+            self.assert_length(logs.output, 1)
+            self.assertIn(
+                "TypeError: list indices must be integers or slices, not str", logs.output[0]
+            )
+
+        # If we override the validation, we get an error because it's not in the session
+        payload = base64.b64encode(orjson.dumps({"challenge": "moose"})).decode()
+        with (
+            patch("zerver.forms.verify_solution", return_value=(True, None)) as verify,
+            self.assertLogs(level="WARNING") as logs,
+        ):
+            result = self.submit_realm_creation_form(
+                email, realm_subdomain=string_id, realm_name=realm_name, captcha=payload
+            )
+            self.assert_in_success_response(["Validation failed, please try again."], result)
+            verify.assert_called_once_with(payload, "secret", check_expires=True)
+            self.assert_length(logs.output, 1)
+            self.assertIn("Expired or replayed altcha solution", logs.output[0])
+
+        self.assertEqual(self.client.session.get("altcha_challenges"), None)
+        result = self.client_get("/json/antispam_challenge")
+        data = self.assert_json_success(result)
+        self.assertEqual(data["algorithm"], "SHA-256")
+        self.assertEqual(data["maxnumber"], 500000)
+        self.assertIn("signature", data)
+        self.assertIn("challenge", data)
+        self.assertIn("salt", data)
+
+        self.assert_length(self.client.session["altcha_challenges"], 1)
+        self.assertEqual(self.client.session["altcha_challenges"][0][0], data["challenge"])
+
+        # Update the payload so the challenge matches what is in the
+        # session.  The real payload would have other keys.
+        payload = base64.b64encode(orjson.dumps({"challenge": data["challenge"]})).decode()
+        with patch("zerver.forms.verify_solution", return_value=(True, None)) as verify:
+            result = self.submit_realm_creation_form(
+                email, realm_subdomain=string_id, realm_name=realm_name, captcha=payload
+            )
+            self.assertEqual(result.status_code, 302)
+            verify.assert_called_once_with(payload, "secret", check_expires=True)
+
+        # And the challenge has been stripped out of the session
+        self.assertEqual(self.client.session["altcha_challenges"], [])
+
 
 class UserSignUpTest(ZulipTestCase):
     def verify_signup(
@@ -2317,7 +2404,7 @@ class UserSignUpTest(ZulipTestCase):
         self.assertNotIn(
             "https://zulip.readthedocs.io/en/latest/subsystems/email.html", result.content.decode()
         )
-        self.assert_in_response("server is experiencing technical difficulties", result)
+        self.assert_in_response("Something went wrong. Sorry about that!", result)
         self.assertTrue(
             "ERROR:root:Failed to deliver email during user registration" in m.output[0]
         )
@@ -2366,7 +2453,7 @@ class UserSignUpTest(ZulipTestCase):
         self.assertNotIn(
             "https://zulip.readthedocs.io/en/latest/subsystems/email.html", result.content.decode()
         )
-        self.assert_in_response("server is experiencing technical difficulties", result)
+        self.assert_in_response("Something went wrong. Sorry about that!", result)
         self.assertTrue("ERROR:root:Failed to deliver email during realm creation" in m.output[0])
 
     def test_user_default_language_and_timezone(self) -> None:
@@ -2576,6 +2663,18 @@ class UserSignUpTest(ZulipTestCase):
         email = self.nonreg_email("newuser")
         with patch("zerver.views.registration.password_auth_enabled", return_value=False):
             user_profile = self.verify_signup(email=email, password=None)
+
+        assert isinstance(user_profile, UserProfile)
+        # User should now be logged in.
+        self.assert_logged_in_user_id(user_profile.id)
+
+    def test_signup_very_long_password(self) -> None:
+        """
+        Check if signing up without a password works properly when
+        password_auth_enabled is False.
+        """
+        email = self.nonreg_email("newuser")
+        user_profile = self.verify_signup(email=email, password="a" * 80)
 
         assert isinstance(user_profile, UserProfile)
         # User should now be logged in.
@@ -3149,6 +3248,39 @@ class UserSignUpTest(ZulipTestCase):
 
     @override_settings(
         AUTHENTICATION_BACKENDS=(
+            "zproject.backends.SAMLAuthBackend",
+            "zproject.backends.ZulipDummyBackend",
+        )
+    )
+    def test_cant_obtain_confirmation_email_when_email_backend_disabled(self) -> None:
+        """
+        When a realm disables EmailAuthBackend while keeping invite_required set to False,
+        users must not be allowed to generate a confirmation email to themselves by POSTing
+        it to the registration endpoints - as that would allow them to sign up and obtain
+        a logged in session in the realm without actually having to go through the
+        allowed authentication methods.
+        """
+        realm = get_realm("zulip")
+        self.assertEqual(realm.invite_required, False)
+
+        from django.core.mail import outbox
+
+        email = "newuser@zulip.com"
+        original_outbox_length = len(outbox)
+        result = self.client_post("/register/", {"email": email})
+        self.assert_not_in_success_response(["check your email"], result)
+        self.assert_in_success_response(["Sign up with"], result)
+
+        self.assertEqual(original_outbox_length, len(outbox))
+
+        result = self.client_post("/accounts/home/", {"email": email})
+        self.assert_not_in_success_response(["check your email"], result)
+        self.assert_in_success_response(["Sign up with"], result)
+
+        self.assertEqual(original_outbox_length, len(outbox))
+
+    @override_settings(
+        AUTHENTICATION_BACKENDS=(
             "zproject.backends.ZulipLDAPAuthBackend",
             "zproject.backends.ZulipDummyBackend",
         )
@@ -3579,7 +3711,8 @@ class UserSignUpTest(ZulipTestCase):
             self.assertLogs("zulip.auth.ldap", "WARNING") as mock_log,
         ):
             original_user_count = UserProfile.objects.count()
-            self.login_with_return(username, password, HTTP_HOST=subdomain + ".testserver")
+            with self.artificial_transaction_savepoint():
+                self.login_with_return(username, password, HTTP_HOST=subdomain + ".testserver")
             # Verify that the process failed as intended - no UserProfile is created.
             self.assertEqual(UserProfile.objects.count(), original_user_count)
             self.assertEqual(
@@ -4695,7 +4828,7 @@ class TwoFactorAuthTest(ZulipTestCase):
 
 
 class NameRestrictionsTest(ZulipTestCase):
-    def test_whitelisted_disposable_domains(self) -> None:
+    def test_override_allow_email_domains(self) -> None:
         self.assertFalse(is_disposable_domain("OPayQ.com"))
 
 

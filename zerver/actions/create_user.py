@@ -398,11 +398,6 @@ def notify_created_user(user_profile: UserProfile, notify_user_ids: list[int]) -
     else:
         active_realm_users = list(user_profile.realm.get_active_users())
 
-        # This call to user_access_restricted_in_realm results in
-        # one extra query in the user creation codepath to check
-        # "realm.can_access_all_users_group.name" because we do
-        # not prefetch realm and its related fields when fetching
-        # PreregistrationUser object.
         if user_access_restricted_in_realm(user_profile):
             for user in active_realm_users:
                 if user.is_guest:
@@ -499,7 +494,7 @@ def notify_created_bot(user_profile: UserProfile) -> None:
     send_event_on_commit(user_profile.realm, event, bot_owner_user_ids(user_profile))
 
 
-@transaction.atomic(durable=True)
+@transaction.atomic(savepoint=False)
 def do_create_user(
     email: str,
     password: str | None,

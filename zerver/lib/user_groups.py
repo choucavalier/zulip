@@ -21,6 +21,7 @@ from zerver.lib.types import (
     GroupPermissionSetting,
     ServerSupportedPermissionSettings,
     UserGroupMembersData,
+    UserGroupMembersDict,
 )
 from zerver.models import (
     GroupGroupMembership,
@@ -51,12 +52,12 @@ class UserGroupDict(TypedDict):
     creator_id: int | None
     date_created: int | None
     is_system_group: bool
-    can_add_members_group: int | UserGroupMembersData
-    can_join_group: int | UserGroupMembersData
-    can_leave_group: int | UserGroupMembersData
-    can_manage_group: int | UserGroupMembersData
-    can_mention_group: int | UserGroupMembersData
-    can_remove_members_group: int | UserGroupMembersData
+    can_add_members_group: int | UserGroupMembersDict
+    can_join_group: int | UserGroupMembersDict
+    can_leave_group: int | UserGroupMembersDict
+    can_manage_group: int | UserGroupMembersDict
+    can_mention_group: int | UserGroupMembersDict
+    can_remove_members_group: int | UserGroupMembersDict
     deactivated: bool
 
 
@@ -170,7 +171,7 @@ def access_user_group_for_update(
         return user_group
 
     user_has_permission = user_has_permission_for_group_setting(
-        user_group.can_manage_group,
+        user_group.can_manage_group_id,
         user_profile,
         NamedUserGroup.GROUP_PERMISSION_SETTINGS["can_manage_group"],
     )
@@ -180,7 +181,7 @@ def access_user_group_for_update(
     if permission_setting != "can_manage_group":
         assert permission_setting in NamedUserGroup.GROUP_PERMISSION_SETTINGS
         user_has_permission = user_has_permission_for_group_setting(
-            getattr(user_group, permission_setting),
+            getattr(user_group, permission_setting).id,
             user_profile,
             NamedUserGroup.GROUP_PERMISSION_SETTINGS[permission_setting],
         )
@@ -548,31 +549,49 @@ def get_group_setting_value_for_api(
     )
 
 
+def convert_to_user_group_members_dict(
+    value: int | UserGroupMembersData,
+) -> int | UserGroupMembersDict:
+    if isinstance(value, UserGroupMembersData):
+        return UserGroupMembersDict(
+            direct_members=value.direct_members, direct_subgroups=value.direct_subgroups
+        )
+    return value
+
+
 def get_setting_value_for_user_group_object(
     setting_group_id: int,
     named_user_group_ids: set[int],
     members_dict: dict[int, UserGroupMembersData],
-) -> int | UserGroupMembersData:
+) -> int | UserGroupMembersDict:
     if setting_group_id in named_user_group_ids:
         return setting_group_id
 
-    return members_dict[setting_group_id]
+    return UserGroupMembersDict(
+        direct_members=members_dict[setting_group_id].direct_members,
+        direct_subgroups=members_dict[setting_group_id].direct_subgroups,
+    )
 
 
 def get_group_setting_value_for_register_api(
     setting_group_id: int,
     anonymous_group_membership: dict[int, UserGroupMembersData],
-) -> int | UserGroupMembersData:
+) -> int | UserGroupMembersDict:
     if setting_group_id not in anonymous_group_membership:
         # anonymous_group_membership is defined to contain the
         # membership of all non-named UserGroup used for realm settings.
         # Thus, any group ID not present in it must be a named group.
         return setting_group_id
 
-    return anonymous_group_membership[setting_group_id]
+    return UserGroupMembersDict(
+        direct_members=anonymous_group_membership[setting_group_id].direct_members,
+        direct_subgroups=anonymous_group_membership[setting_group_id].direct_subgroups,
+    )
 
 
-def get_members_and_subgroups_of_groups(group_ids: set[int]) -> dict[int, UserGroupMembersData]:
+def get_members_and_subgroups_of_groups(
+    group_ids: set[int],
+) -> dict[int, UserGroupMembersData]:
     user_members = (
         UserGroupMembership.objects.filter(user_group_id__in=group_ids)
         .exclude(user_profile__is_active=False)
@@ -618,7 +637,7 @@ def get_members_and_subgroups_of_groups(group_ids: set[int]) -> dict[int, UserGr
 class RealmUserGroupsData:
     api_groups: list[UserGroupDict]
     system_groups_name_dict: dict[int, str]
-    anonymous_group_membership: dict[int, UserGroupMembersData]
+    anonymous_group_membership: dict[int, UserGroupMembersDict]
 
 
 def user_groups_in_realm_serialized(
@@ -709,10 +728,13 @@ def user_groups_in_realm_serialized(
         if user_group.is_system_group:
             system_groups_name_dict[user_group.id] = user_group.name
 
-    anonymous_group_membership = {}
+    anonymous_group_membership: dict[int, UserGroupMembersDict] = {}
     for group_id in anonymous_group_ids:
         if group_id not in realm_group_ids:
-            anonymous_group_membership[group_id] = group_members_dict[group_id]
+            anonymous_group_membership[group_id] = UserGroupMembersDict(
+                direct_members=group_members_dict[group_id].direct_members,
+                direct_subgroups=group_members_dict[group_id].direct_subgroups,
+            )
 
     return RealmUserGroupsData(
         api_groups=sorted(group_dicts.values(), key=lambda group_dict: group_dict["id"]),
@@ -731,10 +753,6 @@ def get_user_group_direct_member_ids(
     return UserGroupMembership.objects.filter(
         user_group=user_group, user_profile__is_active=True
     ).values_list("user_profile_id", flat=True)
-
-
-def get_user_group_direct_members(user_group: UserGroup) -> QuerySet[UserProfile]:
-    return user_group.direct_members.filter(is_active=True)
 
 
 def get_direct_memberships_of_users(user_group: UserGroup, members: list[UserProfile]) -> list[int]:
@@ -764,6 +782,15 @@ def get_recursive_subgroups_union_for_groups(user_group_ids: list[int]) -> Query
         .union(
             cte.join(NamedUserGroup, direct_supergroups=cte.col.group_id).values(group_id=F("id"))
         )
+    )
+    return cte.join(UserGroup, id=cte.col.group_id).with_cte(cte)
+
+
+def get_recursive_supergroups_union_for_groups(user_group_ids: list[int]) -> QuerySet[UserGroup]:
+    cte = With.recursive(
+        lambda cte: UserGroup.objects.filter(id__in=user_group_ids)
+        .values(group_id=F("id"))
+        .union(cte.join(UserGroup, direct_subgroups=cte.col.group_id).values(group_id=F("id")))
     )
     return cte.join(UserGroup, id=cte.col.group_id).with_cte(cte)
 
@@ -809,7 +836,7 @@ def get_recursive_membership_groups(user_profile: UserProfile) -> QuerySet[UserG
 
 
 def user_has_permission_for_group_setting(
-    user_group: UserGroup,
+    user_group_id: int,
     user: UserProfile,
     setting_config: GroupPermissionSetting,
     *,
@@ -818,25 +845,31 @@ def user_has_permission_for_group_setting(
     if not setting_config.allow_everyone_group and user.is_guest:
         return False
 
-    return is_user_in_group(user_group, user, direct_member_only=direct_member_only)
+    return is_user_in_group(user_group_id, user, direct_member_only=direct_member_only)
+
+
+def is_any_user_direct_member(user_group_id: int, user_ids: Iterable[int]) -> bool:
+    return UserGroupMembership.objects.filter(
+        user_group_id=user_group_id, user_profile__is_active=True, user_profile_id__in=user_ids
+    ).exists()
 
 
 def is_user_in_group(
-    user_group: UserGroup, user: UserProfile, *, direct_member_only: bool = False
+    user_group_id: int, user: UserProfile, *, direct_member_only: bool = False
 ) -> bool:
     if direct_member_only:
-        return get_user_group_direct_members(user_group=user_group).filter(id=user.id).exists()
+        return is_any_user_direct_member(user_group_id, [user.id])
 
-    return get_recursive_group_members(user_group_id=user_group.id).filter(id=user.id).exists()
+    return get_recursive_group_members(user_group_id=user_group_id).filter(id=user.id).exists()
 
 
 def is_any_user_in_group(
-    user_group: UserGroup, user_ids: Iterable[int], *, direct_member_only: bool = False
+    user_group_id: int, user_ids: Iterable[int], *, direct_member_only: bool = False
 ) -> bool:
     if direct_member_only:
-        return get_user_group_direct_members(user_group=user_group).filter(id__in=user_ids).exists()
+        return is_any_user_direct_member(user_group_id, user_ids)
 
-    return get_recursive_group_members(user_group_id=user_group.id).filter(id__in=user_ids).exists()
+    return get_recursive_group_members(user_group_id=user_group_id).filter(id__in=user_ids).exists()
 
 
 def get_user_group_member_ids(
@@ -1176,3 +1209,43 @@ def get_group_setting_value_for_audit_log_data(
         return setting_value
 
     return asdict(setting_value)
+
+
+def check_user_has_permission_by_role(
+    user: UserProfile, setting_group_id: int, system_groups_name_dict: dict[int, str]
+) -> bool:
+    system_group_name = system_groups_name_dict[setting_group_id]
+
+    if system_group_name == SystemGroups.NOBODY:
+        return False
+
+    if system_group_name == SystemGroups.EVERYONE:
+        return True
+
+    if user.is_guest:
+        return False
+
+    if system_group_name == SystemGroups.MEMBERS:
+        return True
+
+    if system_group_name == SystemGroups.OWNERS:
+        return user.is_realm_owner
+
+    if system_group_name == SystemGroups.ADMINISTRATORS:
+        return user.is_realm_admin
+
+    if system_group_name == SystemGroups.MODERATORS:
+        return user.is_moderator
+
+    # Handle full members case.
+    return user.role != UserProfile.ROLE_MEMBER or not user.is_provisional_member
+
+
+def check_any_user_has_permission_by_role(
+    users: set[UserProfile], setting_group_id: int, system_groups_name_dict: dict[int, str]
+) -> bool:
+    for user in users:
+        if check_user_has_permission_by_role(user, setting_group_id, system_groups_name_dict):
+            return True
+
+    return False

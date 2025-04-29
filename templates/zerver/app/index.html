@@ -7,7 +7,15 @@
 {% set PAGE_DESCRIPTION = _("Browse the publicly accessible channels in {org_name} without logging in.").format(org_name=realm_name)  %}
 
 {% block meta_viewport %}
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<!--
+From version 132, Firefox now defaults to not resize the viewport
+content but only the visual viewport. While this works well in
+Chrome Android, it creates a buggy experience in Firefox Android
+where the compose box is hidden under keyboard. To fix it, we rollback
+to resizing content when keyboard is shown on Firefox Android.
+TODO: Remove this when Firefox Android fixes the bug -
+https://bugzilla.mozilla.org/show_bug.cgi?id=1943053 -->
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no{% if is_firefox_android %}, interactive-widget=resizes-content{% endif %}" />
 {% endblock %}
 
 {% block customhead %}
@@ -15,7 +23,7 @@
 {% endif -%}
 {% if s3_avatar_public_url_prefix %}<link rel="dns-prefetch" href="{{ s3_avatar_public_url_prefix }}" />
 {% endif -%}
-<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="mobile-web-app-capable" content="yes" />
 <link href="{{ static('images/logo/apple-touch-icon-precomposed.png') }}" rel="apple-touch-icon-precomposed" />
 <style>
     #app-loading {
@@ -95,27 +103,6 @@
     border: 4px solid hsl(0,0%,94%);
     border-top-color: hsl(0,0%,52%);
     animation: zspinner 1s linear infinite;
-    }
-
-    /* Bootstrap 'a' tag styles for styling reload link */
-    a#reload-lnk:focus {
-    outline: thin dotted #333;
-    outline: 5px auto -webkit-focus-ring-color;
-    outline-offset: -2px;
-    }
-    a#reload-lnk:hover,
-    a#reload-lnk:active {
-    outline: 0;
-    }
-    a#reload-lnk {
-    color: #0088cc;
-    text-decoration: none;
-    cursor: pointer;
-    }
-    a#reload-lnk:hover,
-    a#reload-lnk:focus {
-    color: #005580;
-    text-decoration: underline;
     }
 </style>
 {% endblock %}

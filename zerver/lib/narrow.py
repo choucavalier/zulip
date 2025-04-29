@@ -837,7 +837,11 @@ class NarrowBuilder:
                 term = term[1:-1]
                 term = "%" + connection.ops.prep_for_like_query(term) + "%"
                 cond: ClauseElement = or_(
-                    column("content", Text).ilike(term), topic_column_sa().ilike(term)
+                    column("content", Text).ilike(term),
+                    and_(
+                        topic_column_sa().ilike(term),
+                        column("is_channel_message", Boolean),
+                    ),
                 )
                 query = query.where(maybe_negate(cond))
 
@@ -1110,7 +1114,7 @@ def get_base_query_for_search(
         .where(
             or_(
                 # Include direct messages.
-                literal_column("zerver_recipient.type_id", Integer) != Recipient.STREAM,
+                literal_column("zerver_recipient.type", Integer) != Recipient.STREAM,
                 # Include messages where the recipient is a public stream and
                 # the user can access public streams, or the user is a non-guest
                 # belonging to a group granting access to the stream.

@@ -8,6 +8,7 @@ import render_compose from "../templates/compose.hbs";
 import render_message_feed_bottom_whitespace from "../templates/message_feed_bottom_whitespace.hbs";
 import render_message_feed_errors from "../templates/message_feed_errors.hbs";
 import render_navbar from "../templates/navbar.hbs";
+import render_try_zulip_modal from "../templates/try_zulip_modal.hbs";
 
 import * as about_zulip from "./about_zulip.ts";
 import * as activity from "./activity.ts";
@@ -37,8 +38,10 @@ import * as compose_tooltips from "./compose_tooltips.ts";
 import * as compose_validate from "./compose_validate.ts";
 import * as composebox_typeahead from "./composebox_typeahead.ts";
 import * as condense from "./condense.ts";
+import * as copy_messages from "./copy_messages.ts";
 import * as desktop_integration from "./desktop_integration.ts";
 import * as desktop_notifications from "./desktop_notifications.ts";
+import * as dialog_widget from "./dialog_widget.ts";
 import * as drafts from "./drafts.ts";
 import * as drafts_overlay_ui from "./drafts_overlay_ui.ts";
 import * as echo from "./echo.ts";
@@ -512,8 +515,11 @@ export function initialize_everything(state_data) {
                 first_unread_message_id,
             });
         },
+        hide_other_views: inbox_ui.hide,
     });
-    inbox_ui.initialize();
+    inbox_ui.initialize({
+        hide_other_views: recent_view_ui.hide,
+    });
     alert_words.initialize(state_data.alert_words);
     saved_snippets.initialize(state_data.saved_snippets);
     emojisets.initialize();
@@ -541,6 +547,7 @@ export function initialize_everything(state_data) {
     muted_users.initialize(state_data.muted_users);
     stream_settings_ui.initialize();
     left_sidebar_navigation_area.initialize();
+    stream_list_sort.initialize();
     stream_list.initialize({
         on_stream_click(stream_id, trigger) {
             const sub = sub_store.get(stream_id);
@@ -557,7 +564,6 @@ export function initialize_everything(state_data) {
             );
         },
     });
-    stream_list_sort.initialize();
     condense.initialize();
     spoilers.initialize();
     lightbox.initialize();
@@ -599,6 +605,7 @@ export function initialize_everything(state_data) {
         playground_data: realm.realm_playgrounds,
         pygments_comparator_func: typeahead_helper.compare_language,
     });
+    copy_messages.initialize();
     compose_setup.initialize();
     // Typeahead must be initialized after compose_setup.initialize()
     composebox_typeahead.initialize({
@@ -684,6 +691,15 @@ export function initialize_everything(state_data) {
             }
 
             message_view.show(narrow, {trigger: "sidebar"});
+
+            if (sidebar_ui.left_sidebar_expanded_as_overlay) {
+                // If the left sidebar is drawn over the center pane,
+                // hide it so that the user can actually see the
+                // topic. We don't need to also hide the user list
+                // sidebar, since its own click-outside handler will
+                // hide it.
+                sidebar_ui.hide_streamlist_sidebar();
+            }
         },
     });
     drafts.initialize_ui();
@@ -708,8 +724,33 @@ export function initialize_everything(state_data) {
     $("#app-loading").addClass("loaded");
 }
 
+function show_try_zulip_modal() {
+    const html_body = render_try_zulip_modal();
+    dialog_widget.launch({
+        text_heading: i18n.$t({defaultMessage: "Welcome to the Zulip development community!"}),
+        html_body,
+        html_submit_button: i18n.$t({defaultMessage: "Let's go!"}),
+        on_click() {
+            // Do nothing
+        },
+        single_footer_button: true,
+        focus_submit_on_open: true,
+        close_on_submit: true,
+    });
+}
+
 $(() => {
+    // Remove '?show_try_zulip_modal', if present.
+    const url = new URL(window.location.href);
+    if (url.searchParams.has("show_try_zulip_modal")) {
+        url.searchParams.delete("show_try_zulip_modal");
+        window.history.replaceState(window.history.state, "", url.toString());
+    }
+
     if (page_params.is_spectator) {
+        if (page_params.show_try_zulip_modal) {
+            show_try_zulip_modal();
+        }
         const data = {
             apply_markdown: true,
             client_capabilities: JSON.stringify({

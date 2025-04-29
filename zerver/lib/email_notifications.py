@@ -493,17 +493,17 @@ def do_send_missedmessage_events_reply_in_zulip(
         context.update(group_pm=True)
         if len(other_recipients) == 2:
             direct_message_group_display_name = " and ".join(other_recipients)
-            context.update(huddle_display_name=direct_message_group_display_name)
+            context.update(direct_message_group_display_name=direct_message_group_display_name)
         elif len(other_recipients) == 3:
             direct_message_group_display_name = (
                 f"{other_recipients[0]}, {other_recipients[1]}, and {other_recipients[2]}"
             )
-            context.update(huddle_display_name=direct_message_group_display_name)
+            context.update(direct_message_group_display_name=direct_message_group_display_name)
         else:
             direct_message_group_display_name = "{}, and {} others".format(
                 ", ".join(other_recipients[:2]), len(other_recipients) - 2
             )
-            context.update(huddle_display_name=direct_message_group_display_name)
+            context.update(direct_message_group_display_name=direct_message_group_display_name)
     elif missed_messages[0]["message"].recipient.type == Recipient.PERSONAL:
         narrow_url = personal_narrow_url(
             realm=user_profile.realm,
@@ -559,7 +559,7 @@ def do_send_missedmessage_events_reply_in_zulip(
             messages=[],
             sender_str="",
             realm_str=realm.name,
-            huddle_display_name="",
+            direct_message_group_display_name="",
             show_message_content=False,
             message_content_disabled_by_user=not user_profile.message_content_in_email_notifications,
             message_content_disabled_by_realm=not realm.message_content_allowed_in_email_notifications,
@@ -613,14 +613,9 @@ def handle_missedmessage_emails(
     user_profile_id: int, message_ids: dict[int, MissedMessageData]
 ) -> None:
     user_profile = get_user_profile_by_id(user_profile_id)
-    if user_profile.is_bot:  # nocoverage
-        # We don't expect to reach here for bot users. However, this code exists
-        # to find and throw away any pre-existing events in the queue while
-        # upgrading from versions before our notifiability logic was implemented.
-        # TODO/compatibility: This block can be removed when one can no longer
-        # upgrade from versions <= 4.0 to versions >= 5.0
-        logger.warning("Send-email event found for bot user %s. Skipping.", user_profile_id)
-        return
+    # Bots don't have real email addresses, and should have been
+    # filtered previously.
+    assert not user_profile.is_bot
 
     if not user_profile.enable_offline_email_notifications:
         # BUG: Investigate why it's possible to get here.

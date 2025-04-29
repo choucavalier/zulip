@@ -16,7 +16,7 @@
 
 .banner-link {
     color: var(--color-text-link);
-    text-decoration: underline;
+    text-decoration: none;
     text-decoration-color: var(--color-text-link-decoration);
 
     &:hover {
@@ -32,22 +32,29 @@
 
 .banner-label {
     grid-area: banner-label;
-    padding: 0.3333em 0 0.2667em;
-    line-height: 1.2667;
+    /* The padding and line-height values for the banner label
+       are identical to those of the action buttons', to match
+       the height of both of these elements. This is required to
+       align the banner children elements vertically, since we
+       cannot use flexbox center alignment as we also need to
+       account for the UI when the banner has a muli-line label.
+    */
+    padding: 0.25em 0; /* 4px at 16px/1em */
+    line-height: 1.25; /* 20px at 16px/1em */
 }
 
 .banner-action-buttons {
     grid-area: banner-action-buttons;
     display: flex;
-    gap: 8px;
-    margin-left: 10px;
+    gap: 0.5em; /* 8px at 16px/1em */
+    margin-left: 0.625em; /* 10px at 16px/1em */
 }
 
 .banner-close-button {
     display: flex;
     grid-area: banner-close-button;
-    padding: 0.6875em;
-    margin-left: 5px;
+    padding: 0.6875em; /* 11px at 16px/1em */
+    margin-left: 0.3125em; /* 5px at 16px/1em */
 
     &:focus-visible {
         outline-offset: -2px;

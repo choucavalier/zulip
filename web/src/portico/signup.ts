@@ -10,6 +10,9 @@ import * as settings_config from "../settings_config.ts";
 
 import * as portico_modals from "./portico_modals.ts";
 
+/* global AltchaWidgetMethods, AltchaStateChangeEvent */
+import "altcha";
+
 $(() => {
     // NB: this file is included on multiple pages.  In each context,
     // some of the jQuery selectors below will return empty lists.
@@ -60,7 +63,16 @@ $(() => {
 
     $("#registration, #password_reset, #create_realm").validate({
         rules: {
-            password: "password_strength",
+            password: {
+                password_strength: {
+                    depends(element: HTMLElement): boolean {
+                        // In the registration flow where the user is required to
+                        // enter their LDAP password, we don't check password strength,
+                        // and the validator method is not even set up.
+                        return element.id !== "ldap-password";
+                    },
+                },
+            },
             new_password1: "password_strength",
         },
         errorElement: "p",
@@ -351,4 +363,23 @@ $(() => {
             showElement(selected_element);
         }
     });
+
+    // Configure altcha
+    const altcha = document.querySelector<AltchaWidgetMethods & HTMLElement>("altcha-widget");
+    if (altcha) {
+        altcha.configure({
+            auto: "onload",
+            async customfetch(url: string, init?: RequestInit) {
+                return fetch(url, {...init, credentials: "include"});
+            },
+        });
+        const $submit = $(altcha).closest("form").find("button[type=submit]");
+        $submit.prop("disabled", true);
+        // eslint-disable-next-line @typescript-eslint/consistent-type-assertions
+        altcha.addEventListener("statechange", ((ev: AltchaStateChangeEvent) => {
+            if (ev.detail.state === "verified") {
+                $submit.prop("disabled", false);
+            }
+        }) as EventListener);
+    }
 });

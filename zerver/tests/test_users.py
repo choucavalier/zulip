@@ -116,7 +116,7 @@ class PermissionTest(ZulipTestCase):
         self.assertEqual(user_profile.role, UserProfile.ROLE_REALM_ADMINISTRATOR)
 
         user_profile.is_moderator = False
-        self.assertEqual(user_profile.is_moderator, False)
+        self.assertEqual(user_profile.is_moderator, True)
         self.assertEqual(user_profile.role, UserProfile.ROLE_REALM_ADMINISTRATOR)
 
         user_profile.is_realm_admin = False
@@ -593,21 +593,16 @@ class PermissionTest(ZulipTestCase):
                 user_profile.is_realm_admin
                 and not user_profile.is_guest
                 and not user_profile.is_realm_owner
-                and not user_profile.is_moderator
             )
         elif role == UserProfile.ROLE_REALM_OWNER:
             return (
                 user_profile.is_realm_owner
                 and user_profile.is_realm_admin
-                and not user_profile.is_moderator
                 and not user_profile.is_guest
             )
         elif role == UserProfile.ROLE_MODERATOR:
-            return (
-                user_profile.is_moderator
-                and not user_profile.is_realm_owner
-                and not user_profile.is_realm_admin
-                and not user_profile.is_guest
+            return user_profile.is_moderator or (
+                user_profile.is_realm_admin and not user_profile.is_guest
             )
 
         if role == UserProfile.ROLE_MEMBER:
@@ -1000,9 +995,9 @@ class QueryCountTest(ZulipTestCase):
         prereg_user = PreregistrationUser.objects.get(email="fred@zulip.com")
 
         with (
-            self.assert_database_query_count(86),
-            self.assert_memcached_count(20),
-            self.capture_send_event_calls(expected_num_events=10) as events,
+            self.assert_database_query_count(85),
+            self.assert_memcached_count(23),
+            self.capture_send_event_calls(expected_num_events=11) as events,
         ):
             fred = do_create_user(
                 email="fred@zulip.com",
@@ -1023,7 +1018,7 @@ class QueryCountTest(ZulipTestCase):
             notifications.add(",".join(stream_names))
 
         self.assertEqual(
-            notifications, {"Denmark,Scotland,Verona", "private_stream1", "private_stream2"}
+            notifications, {"private_stream1", "private_stream2", "Verona", "Denmark,Scotland"}
         )
 
 
@@ -1724,7 +1719,7 @@ class UserProfileTest(ZulipTestCase):
 
         # Subscribe to the stream.
         self.subscribe(iago, stream.name)
-        with self.assert_database_query_count(7):
+        with self.assert_database_query_count(8):
             result = orjson.loads(
                 self.client_get(f"/json/users/{iago.id}/subscriptions/{stream.id}").content
             )

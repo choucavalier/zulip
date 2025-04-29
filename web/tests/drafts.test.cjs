@@ -9,6 +9,7 @@ const $ = require("./lib/zjquery.cjs");
 
 const user_pill = mock_esm("../src/user_pill");
 const messages_overlay_ui = mock_esm("../src/messages_overlay_ui");
+messages_overlay_ui.initialize_restore_overlay_message_tooltip = noop;
 
 const compose_pm_pill = zrequire("compose_pm_pill");
 const people = zrequire("people");
@@ -17,7 +18,7 @@ const compose_recipient = zrequire("compose_recipient");
 const sub_store = zrequire("sub_store");
 const stream_data = zrequire("stream_data");
 const {initialize_user_settings} = zrequire("user_settings");
-const {set_realm} = zrequire("state_data");
+const {set_current_user, set_realm} = zrequire("state_data");
 class Clipboard {
     on() {}
 }
@@ -35,7 +36,21 @@ const aaron = {
     user_id: 6,
     full_name: "Aaron",
 };
+const iago = {
+    email: "iago@zulip.com",
+    user_id: 2,
+    full_name: "Iago",
+};
+const zoe = {
+    email: "zoe@zulip.com",
+    user_id: 3,
+    full_name: "Zoe",
+};
+set_current_user(aaron);
 people.add_active_user(aaron);
+people.initialize_current_user(aaron.user_id);
+people.add_active_user(iago);
+people.add_active_user(zoe);
 
 const setTimeout_delay = 3000;
 set_global("setTimeout", (f, delay) => {
@@ -475,7 +490,7 @@ test("format_drafts", ({override, override_rewire, mock_template}) => {
         drafts_version: 1,
     };
     const draft_4 = {
-        private_message_recipient: "aaron@zulip.com",
+        private_message_recipient: "iago@zulip.com",
         reply_to: "iago@zulip.com",
         type: "private",
         content: "Test direct message 2",
@@ -484,8 +499,8 @@ test("format_drafts", ({override, override_rewire, mock_template}) => {
         drafts_version: 1,
     };
     const draft_5 = {
-        private_message_recipient: "aaron@zulip.com",
-        reply_to: "zoe@zulip.com",
+        private_message_recipient: "zoe@zulip.com,iago@zulip.com",
+        reply_to: "zoe@zulip.com,iago@zulip.com",
         type: "private",
         content: "Test direct message 3",
         updatedAt: date(-2),
@@ -519,6 +534,7 @@ test("format_drafts", ({override, override_rewire, mock_template}) => {
         },
         {
             draft_id: "id2",
+            is_dm_with_self: true,
             is_stream: false,
             recipients: "Aaron",
             raw_content: "Test direct message",
@@ -526,15 +542,17 @@ test("format_drafts", ({override, override_rewire, mock_template}) => {
         },
         {
             draft_id: "id5",
+            is_dm_with_self: false,
             is_stream: false,
-            recipients: "Aaron",
+            recipients: "Iago, Zoe",
             raw_content: "Test direct message 3",
             time_stamp: "Jan 29",
         },
         {
             draft_id: "id4",
+            is_dm_with_self: false,
             is_stream: false,
-            recipients: "Aaron",
+            recipients: "Iago",
             raw_content: "Test direct message 2",
             time_stamp: "Jan 26",
         },
@@ -680,7 +698,7 @@ test("filter_drafts", ({override, override_rewire, mock_template}) => {
     };
     const pm_draft_2 = {
         private_message_recipient: "aaron@zulip.com",
-        reply_to: "iago@zulip.com",
+        reply_to: "aaron@zulip.com",
         type: "private",
         content: "Test direct message 2",
         updatedAt: date(-5),
@@ -689,7 +707,7 @@ test("filter_drafts", ({override, override_rewire, mock_template}) => {
     };
     const pm_draft_3 = {
         private_message_recipient: "aaron@zulip.com",
-        reply_to: "zoe@zulip.com",
+        reply_to: "aaron@zulip.com",
         type: "private",
         content: "Test direct message 3",
         updatedAt: date(-2),
@@ -700,6 +718,7 @@ test("filter_drafts", ({override, override_rewire, mock_template}) => {
     const expected_pm_drafts = [
         {
             draft_id: "id2",
+            is_dm_with_self: true,
             is_stream: false,
             recipients: "Aaron",
             raw_content: "Test direct message",
@@ -707,6 +726,7 @@ test("filter_drafts", ({override, override_rewire, mock_template}) => {
         },
         {
             draft_id: "id5",
+            is_dm_with_self: true,
             is_stream: false,
             recipients: "Aaron",
             raw_content: "Test direct message 3",
@@ -714,6 +734,7 @@ test("filter_drafts", ({override, override_rewire, mock_template}) => {
         },
         {
             draft_id: "id4",
+            is_dm_with_self: true,
             is_stream: false,
             recipients: "Aaron",
             raw_content: "Test direct message 2",

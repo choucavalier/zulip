@@ -141,6 +141,11 @@ class UserTopicDict(TypedDict, total=False):
     visibility_policy: int
 
 
+class UserGroupMembersDict(TypedDict):
+    direct_members: list[int]
+    direct_subgroups: list[int]
+
+
 @dataclass
 class UserGroupMembersData:
     direct_members: list[int]
@@ -199,11 +204,11 @@ class SubscriptionStreamDict(TypedDict):
     """
 
     audible_notifications: bool | None
-    can_add_subscribers_group: int | UserGroupMembersData
-    can_administer_channel_group: int | UserGroupMembersData
-    can_send_message_group: int | UserGroupMembersData
-    can_remove_subscribers_group: int | UserGroupMembersData
-    can_subscribe_group: int | UserGroupMembersData
+    can_add_subscribers_group: int | UserGroupMembersDict
+    can_administer_channel_group: int | UserGroupMembersDict
+    can_send_message_group: int | UserGroupMembersDict
+    can_remove_subscribers_group: int | UserGroupMembersDict
+    can_subscribe_group: int | UserGroupMembersDict
     color: str
     creator_id: int | None
     date_created: int
@@ -228,16 +233,17 @@ class SubscriptionStreamDict(TypedDict):
     stream_post_policy: int
     stream_weekly_traffic: int | None
     subscribers: NotRequired[list[int]]
+    partial_subscribers: NotRequired[list[int]]
     wildcard_mentions_notify: bool | None
 
 
 class NeverSubscribedStreamDict(TypedDict):
     is_archived: bool
-    can_add_subscribers_group: int | UserGroupMembersData
-    can_administer_channel_group: int | UserGroupMembersData
-    can_send_message_group: int | UserGroupMembersData
-    can_remove_subscribers_group: int | UserGroupMembersData
-    can_subscribe_group: int | UserGroupMembersData
+    can_add_subscribers_group: int | UserGroupMembersDict
+    can_administer_channel_group: int | UserGroupMembersDict
+    can_send_message_group: int | UserGroupMembersDict
+    can_remove_subscribers_group: int | UserGroupMembersDict
+    can_subscribe_group: int | UserGroupMembersDict
     creator_id: int | None
     date_created: int
     description: str
@@ -254,6 +260,7 @@ class NeverSubscribedStreamDict(TypedDict):
     stream_post_policy: int
     stream_weekly_traffic: int | None
     subscribers: NotRequired[list[int]]
+    partial_subscribers: NotRequired[list[int]]
 
 
 class DefaultStreamDict(TypedDict):
@@ -263,11 +270,11 @@ class DefaultStreamDict(TypedDict):
     """
 
     is_archived: bool
-    can_add_subscribers_group: int | UserGroupMembersData
-    can_administer_channel_group: int | UserGroupMembersData
-    can_send_message_group: int | UserGroupMembersData
-    can_remove_subscribers_group: int | UserGroupMembersData
-    can_subscribe_group: int | UserGroupMembersData
+    can_add_subscribers_group: int | UserGroupMembersDict
+    can_administer_channel_group: int | UserGroupMembersDict
+    can_send_message_group: int | UserGroupMembersDict
+    can_remove_subscribers_group: int | UserGroupMembersDict
+    can_subscribe_group: int | UserGroupMembersDict
     creator_id: int | None
     date_created: int
     description: str

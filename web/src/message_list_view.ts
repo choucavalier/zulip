@@ -3,6 +3,7 @@ import $ from "jquery";
 import _ from "lodash";
 import assert from "minimalistic-assert";
 
+import * as internal_url from "../shared/src/internal_url.ts";
 import * as resolved_topic from "../shared/src/resolved_topic.ts";
 import render_bookend from "../templates/bookend.hbs";
 import render_login_to_view_image_button from "../templates/login_to_view_image_button.hbs";
@@ -122,6 +123,7 @@ export type MessageGroup = {
           pm_with_url: string;
           recipient_users: RecipientRowUser[];
           always_display_date: boolean;
+          is_dm_with_self: boolean;
       }
 );
 
@@ -255,6 +257,7 @@ function get_users_for_recipient_row(message: Message): RecipientRowUser[] {
     assert(user_ids !== undefined);
     const users = user_ids.map((user_id) => {
         let full_name;
+        const is_bot = people.is_valid_bot_user(user_id);
         if (muted_users.is_user_muted(user_id)) {
             full_name = $t({defaultMessage: "Muted user"});
         } else {
@@ -263,6 +266,7 @@ function get_users_for_recipient_row(message: Message): RecipientRowUser[] {
         return {
             full_name,
             should_add_guest_user_indicator: people.should_add_guest_user_indicator(user_id),
+            is_bot,
         };
     });
 
@@ -381,7 +385,12 @@ function populate_group_from_message(
         const match_topic = util.get_match_topic(message);
         const stream_url = hash_util.by_stream_url(message.stream_id);
         const is_archived = stream_data.is_stream_archived(message.stream_id);
-        const topic_url = hash_util.by_stream_topic_url(message.stream_id, message.topic);
+        const topic_url = internal_url.by_stream_topic_url(
+            message.stream_id,
+            message.topic,
+            sub_store.maybe_get_stream_name,
+            message.id,
+        );
 
         const sub = sub_store.get(message.stream_id);
         let stream_id;
@@ -450,6 +459,7 @@ function populate_group_from_message(
         display_recipient,
         pm_with_url: message.pm_with_url,
         recipient_users: get_users_for_recipient_row(message),
+        is_dm_with_self: people.is_direct_message_conversation_with_self(user_ids),
         display_reply_to_for_tooltip: message_store.get_pm_full_names(user_ids),
         always_display_date,
     };
@@ -1666,6 +1676,8 @@ export class MessageListView {
                 is_revealed,
             ),
         );
+
+        this.set_edited_notice_locations(message_container);
 
         const $rendered_msg = $(this._get_message_template(message_container));
         if (message_content_edited) {

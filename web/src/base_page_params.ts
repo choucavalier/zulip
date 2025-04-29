@@ -43,6 +43,7 @@ const home_params_schema = default_params_schema
         // it isn't displayed for logged-in users and requires markdown
         // processor time to compute.
         realm_rendered_description: z.optional(z.string()),
+        show_try_zulip_modal: z.boolean(),
         show_webathena: z.boolean(),
         state_data: state_data_schema.nullable(),
         translation_data: z.record(z.string()),
@@ -84,7 +85,6 @@ const team_params_schema = default_params_schema.extend({
 const upgrade_params_schema = default_params_schema.extend({
     page_type: z.literal("upgrade"),
     annual_price: z.number(),
-    demo_organization_scheduled_deletion_date: z.nullable(z.number()),
     monthly_price: z.number(),
     seat_count: z.number(),
     billing_base_url: z.string(),

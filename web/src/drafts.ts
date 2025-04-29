@@ -145,9 +145,7 @@ export const draft_model = (function () {
             // since we expect bugged drafts will have either been run
             // through this code or been deleted by the previous
             // behavior of deleting them after 30 days.
-            if (draft.topic === undefined) {
-                draft.topic = "";
-            }
+            draft.topic ??= "";
 
             valid_drafts[draft_id] = {
                 ...draft,
@@ -506,9 +504,9 @@ export function filter_drafts_by_compose_box_and_recipient(
         // Match by stream and topic.
         if (
             stream_id &&
-            topic &&
+            topic !== undefined &&
             draft.type === "stream" &&
-            draft.topic &&
+            draft.topic !== undefined &&
             draft.stream_id !== undefined &&
             util.same_recipient(
                 {type: "stream", stream_id: draft.stream_id, topic: draft.topic},
@@ -518,7 +516,12 @@ export function filter_drafts_by_compose_box_and_recipient(
             narrow_drafts_ids.push(id);
         }
         // Match by only stream.
-        else if (draft.type === "stream" && stream_id && !topic && draft.stream_id === stream_id) {
+        else if (
+            draft.type === "stream" &&
+            stream_id &&
+            topic === undefined &&
+            draft.stream_id === stream_id
+        ) {
             narrow_drafts_ids.push(id);
         }
         // Match by direct message recipient.
@@ -575,6 +578,7 @@ export type FormattedDraft =
       }
     | {
           is_stream: false;
+          is_dm_with_self: boolean;
           draft_id: string;
           recipients: string;
           raw_content: string;
@@ -650,11 +654,19 @@ export function format_draft(draft: LocalStorageDraftWithId): FormattedDraft | u
         };
     }
 
+    let is_dm_with_self = false;
     const emails = util.extract_pm_recipients(draft.private_message_recipient);
+    if (emails.length === 1) {
+        const user = people.get_by_email(emails[0]!);
+        if (user && people.is_direct_message_conversation_with_self([user.user_id])) {
+            is_dm_with_self = true;
+        }
+    }
     const recipients = people.emails_to_full_names_string(emails);
     return {
         draft_id: draft.id,
         is_stream: false,
+        is_dm_with_self,
         recipients,
         raw_content: draft.content,
         time_stamp,

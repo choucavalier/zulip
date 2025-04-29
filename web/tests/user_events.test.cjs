@@ -47,6 +47,9 @@ mock_esm("../src/pm_list", {
 mock_esm("../src/settings", {
     update_lock_icon_in_sidebar() {},
 });
+mock_esm("../src/settings_data", {
+    user_can_access_all_other_users: () => true,
+});
 mock_esm("../src/settings_linkifiers", {
     maybe_disable_widgets() {},
 });
@@ -130,7 +133,7 @@ run_test("updates", ({override}) => {
     });
     person = people.get_by_email(isaac.email);
     assert.equal(person.full_name, "Isaac Newton");
-    assert.equal(person.is_moderator, false);
+    assert.equal(person.is_moderator, true);
     assert.equal(person.is_admin, true);
     assert.equal(person.role, settings_config.user_role_values.admin.code);
 

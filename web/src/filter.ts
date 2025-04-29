@@ -23,7 +23,8 @@ import * as user_topics from "./user_topics.ts";
 import * as util from "./util.ts";
 
 type IconData = {
-    title: string;
+    title?: string | undefined;
+    html_title?: string | undefined;
     is_spectator: boolean;
 } & (
     | {
@@ -1008,9 +1009,7 @@ export class Filter {
     }
 
     predicate(): (message: Message) => boolean {
-        if (this._predicate === undefined) {
-            this._predicate = this._build_predicate();
-        }
+        this._predicate ??= this._build_predicate();
         return this._predicate;
     }
 
@@ -1154,9 +1153,7 @@ export class Filter {
     }
 
     can_mark_messages_read(): boolean {
-        if (this._can_mark_messages_read === undefined) {
-            this._can_mark_messages_read = this.calc_can_mark_messages_read();
-        }
+        this._can_mark_messages_read ??= this.calc_can_mark_messages_read();
         return this._can_mark_messages_read;
     }
 
@@ -1321,7 +1318,8 @@ export class Filter {
     }
 
     add_icon_data(context: {
-        title: string;
+        title?: string;
+        html_title?: string;
         description?: string | undefined;
         link?: string | undefined;
         is_spectator: boolean;
@@ -1414,6 +1412,12 @@ export class Filter {
             (term_types.length === 1 && _.isEqual(term_types, ["dm"]))
         ) {
             const emails = this.operands("dm")[0]!.split(",");
+            if (emails.length === 1) {
+                const user = people.get_by_email(emails[0]!);
+                if (user && people.is_direct_message_conversation_with_self([user.user_id])) {
+                    return $t({defaultMessage: "Messages with yourself"});
+                }
+            }
             const names = emails.map((email) => {
                 const person = people.get_by_email(email);
                 if (!person) {
@@ -1770,6 +1774,14 @@ export class Filter {
             return true;
         }
         return false;
+    }
+
+    is_channel_view(): boolean {
+        return (
+            this._terms.length === 1 &&
+            this._terms[0] !== undefined &&
+            Filter.term_type(this._terms[0]) === "channel"
+        );
     }
 
     may_contain_multiple_conversations(): boolean {

@@ -21,14 +21,14 @@ function fade_out_popup_banner($banner: JQuery): void {
 const get_connection_error_label = (retry_delay_secs: number): string => {
     if (original_retry_delay_secs < 5) {
         // When the retry delay is less than 5 seconds, we don't show the retry
-        // delay time in the banner, and instead just show "Retrying soon…" to
-        // constant flickering of the banner label for very short times.
-        return $t({defaultMessage: "Unable to connect to Zulip. Retrying soon…"});
+        // delay time in the banner, and instead just show "Trying to reconnect soon…"
+        // to avoid constant flickering of the banner label for very short times.
+        return $t({defaultMessage: "Unable to connect to Zulip. Trying to reconnect soon…"});
     }
     return $t(
         {
             defaultMessage:
-                "Unable to connect to Zulip. {retry_delay_secs, plural, one {Trying again in {retry_delay_secs} second…} other {Trying again in {retry_delay_secs} seconds…}}",
+                "Unable to connect to Zulip. {retry_delay_secs, plural, one {Trying to reconnect in {retry_delay_secs} second…} other {Trying to reconnect in {retry_delay_secs} seconds…}}",
         },
         {retry_delay_secs},
     );
@@ -76,12 +76,13 @@ const update_connection_error_banner = ($banner: JQuery, retry_delay_secs: numbe
 const FOUND_MISSING_UNREADS_IN_CURRENT_NARROW: Banner = {
     intent: "warning",
     label: $t({
-        defaultMessage: "This conversation also has older unread messages.",
+        defaultMessage:
+            "This conversation also has older unread messages. Jump to first unread message?",
     }),
     buttons: [
         {
             attention: "quiet",
-            label: $t({defaultMessage: "Jump to first unread"}),
+            label: $t({defaultMessage: "Jump"}),
             custom_classes: "found-missing-unreads-jump-to-first-unread",
         },
     ],
@@ -131,12 +132,38 @@ export function close_found_missing_unreads_banner(): void {
     fade_out_popup_banner($banner);
 }
 
+function retry_connection_click_handler(e: JQuery.ClickEvent, on_retry_callback: () => void): void {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const $banner = $(e.currentTarget).closest(".banner");
+    $banner
+        .find(".banner-label")
+        .text($t({defaultMessage: "Unable to connect to Zulip. Trying to reconnect soon…"}));
+
+    const $button = $(e.currentTarget).closest(".retry-connection");
+
+    // If the loading indicator is already being shown, this logic
+    // allows us to visually indicate that the retry sequence was
+    // executed again by showing the loading indicator on click.
+    $button.removeClass("button-hide-loading-indicator-on-hover");
+    $button.one("mouseleave", () => {
+        $button.addClass("button-hide-loading-indicator-on-hover");
+    });
+
+    buttons.show_button_loading_indicator($button);
+    on_retry_callback();
+}
+
 export function open_connection_error_popup_banner(opts: {
     caller: "server_events" | "message_fetch";
     retry_delay_secs: number;
     on_retry_callback: () => void;
 }): void {
     opts.retry_delay_secs = Math.round(opts.retry_delay_secs);
+    const retry_connection_attached_click_handler = (e: JQuery.ClickEvent): void => {
+        retry_connection_click_handler(e, opts.on_retry_callback);
+    };
     // If the banner is already open, don't open it again, and instead remove
     // the loading indicator on the retry button, if it was being shown.
     let $banner = $("#popup_banners_wrapper").find(".connection-error-banner");
@@ -157,6 +184,10 @@ export function open_connection_error_popup_banner(opts: {
                 buttons.hide_button_loading_indicator($retry_connection_button);
             }, 1000);
         }
+        // Update the click handler to the new on_retry_callback.
+        // Remove any click events on the button.
+        $retry_connection_button.off("click");
+        $retry_connection_button.on("click", retry_connection_attached_click_handler);
         return;
     }
 
@@ -174,28 +205,11 @@ export function open_connection_error_popup_banner(opts: {
 
     update_connection_error_banner($banner, opts.retry_delay_secs);
 
-    $("#popup_banners_wrapper").on("click", ".retry-connection", function (this: HTMLElement, e) {
-        e.preventDefault();
-        e.stopPropagation();
-
-        const $banner = $(this).closest(".banner");
-        $banner
-            .find(".banner-label")
-            .text($t({defaultMessage: "Unable to connect to Zulip. Retrying now…"}));
-
-        const $button = $(this);
-
-        // If the loading indicator is already being shown, this logic
-        // allows us to visually indicate that the retry sequence was
-        // executed again by showing the loading indicator on click.
-        $button.removeClass("button-hide-loading-indicator-on-hover");
-        $button.one("mouseleave", () => {
-            $button.addClass("button-hide-loading-indicator-on-hover");
-        });
-
-        buttons.show_button_loading_indicator($button);
-        opts.on_retry_callback();
-    });
+    $("#popup_banners_wrapper").on(
+        "click",
+        ".retry-connection",
+        retry_connection_attached_click_handler,
+    );
 }
 
 export function close_connection_error_popup_banner(

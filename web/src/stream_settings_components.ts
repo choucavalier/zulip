@@ -2,7 +2,7 @@ import $ from "jquery";
 import {z} from "zod";
 
 import render_unsubscribe_private_stream_modal from "../templates/confirm_dialog/confirm_unsubscribe_private_stream.hbs";
-import render_inline_decorated_stream_name from "../templates/inline_decorated_stream_name.hbs";
+import render_inline_decorated_channel_name from "../templates/inline_decorated_channel_name.hbs";
 import render_selected_stream_title from "../templates/stream_settings/selected_stream_title.hbs";
 
 import * as channel from "./channel.ts";
@@ -19,6 +19,7 @@ import * as stream_data from "./stream_data.ts";
 import * as stream_settings_data from "./stream_settings_data.ts";
 import type {StreamSubscription} from "./sub_store.ts";
 import * as ui_report from "./ui_report.ts";
+import * as user_groups from "./user_groups.ts";
 
 export let filter_dropdown_widget: DropdownWidget;
 
@@ -99,7 +100,9 @@ export function get_active_data(): {
 } {
     const $active_row = $("div.stream-row.active");
     const valid_active_id = Number.parseInt($active_row.attr("data-stream-id")!, 10);
-    const $active_tabs = $(".subscriptions-container").find("div.ind-tab.selected");
+    const $active_tabs = $("#subscription_overlay .two-pane-settings-container").find(
+        "div.ind-tab.selected",
+    );
     return {
         $row: $active_row,
         id: valid_active_id,
@@ -222,11 +225,17 @@ function ajaxUnsubscribe(sub: StreamSubscription, $stream_row: JQuery | undefine
 export function unsubscribe_from_private_stream(sub: StreamSubscription): void {
     const invite_only = sub.invite_only;
     const sub_count = peer_data.get_subscriber_count(sub.stream_id);
-    const stream_name_with_privacy_symbol_html = render_inline_decorated_stream_name({stream: sub});
+    const stream_name_with_privacy_symbol_html = render_inline_decorated_channel_name({
+        stream: sub,
+    });
 
     const html_body = render_unsubscribe_private_stream_modal({
         unsubscribing_other_user: false,
-        display_stream_archive_warning: sub_count === 1 && invite_only,
+        organization_will_lose_content_access:
+            sub_count === 1 &&
+            invite_only &&
+            user_groups.is_setting_group_set_to_nobody_group(sub.can_subscribe_group) &&
+            user_groups.is_setting_group_set_to_nobody_group(sub.can_add_subscribers_group),
     });
 
     function unsubscribe_from_stream(): void {

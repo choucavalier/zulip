@@ -190,6 +190,8 @@ class BotIntegration(Integration):
 
 
 class PythonAPIIntegration(Integration):
+    DEFAULT_DOC_PATH = "{directory_name}/doc.md"
+
     def __init__(
         self,
         name: str,
@@ -203,6 +205,15 @@ class PythonAPIIntegration(Integration):
         stream_name: str | None = None,
         legacy: bool = False,
     ) -> None:
+        if directory_name is None:
+            directory_name = name
+        self.directory_name = directory_name
+
+        # Assign before super(), to use self.directory_name instead of self.name
+        if doc is None:
+            doc = self.DEFAULT_DOC_PATH.format(directory_name=self.directory_name)
+        self.doc = doc
+
         super().__init__(
             name,
             categories,
@@ -214,10 +225,6 @@ class PythonAPIIntegration(Integration):
             stream_name=stream_name,
             legacy=legacy,
         )
-
-        if directory_name is None:
-            directory_name = name
-        self.directory_name = directory_name
 
 
 class WebhookIntegration(Integration):
@@ -510,7 +517,8 @@ WEBHOOK_INTEGRATIONS: list[WebhookIntegration] = [
     ),
     WebhookIntegration("insping", ["monitoring"]),
     WebhookIntegration("intercom", ["customer-support"]),
-    WebhookIntegration("jira", ["project-management"]),
+    # Avoid collision with jira-plugin's doc "jira/doc.md".
+    WebhookIntegration("jira", ["project-management"], doc="jira/jira-doc.md"),
     WebhookIntegration("jotform", ["misc"]),
     WebhookIntegration("json", ["misc"], display_name="JSON formatter"),
     WebhookIntegration("librato", ["monitoring"]),
@@ -520,6 +528,7 @@ WEBHOOK_INTEGRATIONS: list[WebhookIntegration] = [
     WebhookIntegration("netlify", ["continuous-integration", "deployment"]),
     WebhookIntegration("newrelic", ["monitoring"], display_name="New Relic"),
     WebhookIntegration("opencollective", ["financial"], display_name="Open Collective"),
+    WebhookIntegration("opensearch", ["monitoring"], display_name="OpenSearch"),
     WebhookIntegration("opsgenie", ["meta-integration", "monitoring"]),
     WebhookIntegration("pagerduty", ["monitoring"], display_name="PagerDuty"),
     WebhookIntegration("papertrail", ["monitoring"]),
@@ -581,6 +590,7 @@ INTEGRATIONS: dict[str, Integration] = {
         "github-actions", ["continuous-integration"], display_name="GitHub Actions"
     ),
     "hubot": Integration("hubot", ["meta-integration", "bots"]),
+    "jenkins": Integration("jenkins", ["continuous-integration"]),
     "jitsi": Integration("jitsi", ["communication"], display_name="Jitsi Meet"),
     "mastodon": Integration("mastodon", ["communication"]),
     "notion": Integration("notion", ["productivity"]),
@@ -600,13 +610,13 @@ PYTHON_API_INTEGRATIONS: list[PythonAPIIntegration] = [
     PythonAPIIntegration(
         "irc", ["communication"], display_name="IRC", directory_name="bridge_with_irc"
     ),
-    PythonAPIIntegration("jenkins", ["continuous-integration"]),
     PythonAPIIntegration(
         "jira-plugin",
         ["project-management"],
         logo="images/integrations/logos/jira.svg",
         secondary_line_text="(locally installed)",
         display_name="Jira",
+        directory_name="jira",
         stream_name="jira",
         legacy=True,
     ),
@@ -754,7 +764,7 @@ DOC_SCREENSHOT_CONFIG: dict[str, list[BaseScreenshotConfig]] = {
     "insping": [ScreenshotConfig("website_state_available.json")],
     "intercom": [ScreenshotConfig("conversation_admin_replied.json")],
     "jira": [ScreenshotConfig("created_v1.json")],
-    "jotform": [ScreenshotConfig("response.multipart")],
+    "jotform": [ScreenshotConfig("screenshot_response.multipart")],
     "json": [ScreenshotConfig("json_github_push__1_commit.json")],
     "librato": [ScreenshotConfig("three_conditions_alert.json", payload_as_query_param=True)],
     "lidarr": [ScreenshotConfig("lidarr_album_grabbed.json")],
@@ -764,6 +774,7 @@ DOC_SCREENSHOT_CONFIG: dict[str, list[BaseScreenshotConfig]] = {
     "netlify": [ScreenshotConfig("deploy_building.json")],
     "newrelic": [ScreenshotConfig("incident_activated_new_default_payload.json")],
     "opencollective": [ScreenshotConfig("one_time_donation.json")],
+    "opensearch": [ScreenshotConfig("example_template.txt")],
     "opsgenie": [ScreenshotConfig("addrecipient.json")],
     "pagerduty": [ScreenshotConfig("trigger_v2.json")],
     "papertrail": [ScreenshotConfig("short_post.json", payload_as_query_param=True)],

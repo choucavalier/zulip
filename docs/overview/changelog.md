@@ -3,22 +3,126 @@
 This page contains the release history for the Zulip server. See also the
 [Zulip release lifecycle](../overview/release-lifecycle.md).
 
-## Zulip Server 10.x series (development)
+## Zulip Server 11.x series (development)
 
-### Planned for 10.0
+This section is an incomplete draft of the release notes for the next
+major release, and is only updated occasionally. See the [commit
+log][commit-log] for an up-to-date list of all changes.
 
-This section documents important features that we expect to be in the
-final 10.0 release, but are not available in 10.0-beta1.
+### Zulip Server 11.0
 
-- Replaced the compact mode setting with flexible options for font
-  size and line spacing in the Zulip web app.
+_Unreleased_
 
-### Zulip Server 10.0-beta2
+- Added support for using PostgreSQL 17 as the database. See the
+  [PostgreSQL upgrade
+  documentation](../production/upgrade.md#upgrading-postgresql) if
+  you’re interested in upgrading an existing server to newer
+  PostgreSQL.
 
-_Released 2025-03-06_
+#### Upgrade notes for 11.0
+
+- PostgreSQL 13 is no longer supported; if you are currently using it, you will
+  need to [upgrade PostgreSQL](../production/upgrade.md#upgrading-postgresql)
+  before upgrading Zulip.
+
+## Zulip Server 10.x series
+
+### Zulip Server 10.2
+
+_Released 2025-04-15_
+
+- CVE-2025-31478: Authentication backend configuration bypass in Zulip Server.
+- Fixed several compatibility issues between the new `tusd`-based file upload
+  support and some S3-compatible storage services. In particular:
+  - The new `S3_SKIP_CHECKSUM`
+    [setting](../production/upload-backends.md#s3-backend-configuration)
+    is required to prevent AWS’s S3 client libraries from refusing to make
+    requests to some third-party S3 implementations — specifically, those that
+    don’t yet support AWS’s new checksum algorithm. (Zulip 9.x used older
+    versions of these libraries that did not attempt to enforce AWS's new
+    checksum algorithm).
+  - Google Cloud Storage requires some additional configuration; see the
+    [documentation](../production/upload-backends.md#google-cloud-platform).
+  - Fixed support for automatically accessing S3 secrets from EC2 instance
+    profiles.
+- Fixed compatibility issues between the new `tusd` -based file upload backend
+  and using a non-default port for the Zulip server.
+- Added support for PostgreSQL 17.
+- Direct message conversations are now allowed to wrap to two lines in the left
+  sidebar using a 2-line format, just like topics.
+- Fixed an important server availability bug involving thumbnails for large
+  video files.
+- Fixed several web application bugs involving displaying group-based
+  permissions.
+- Fixed several visual glitches.
+- Fixed a few bugs in the move conversation modal.
+- Fixed a bug that prevented new hardening of content access from being
+  enforced.
+- Fixed a bug preventing showing archived channels that remain marked as
+  web-public channels in the public access option. (Prior to Zulip 10.0,
+  archiving a channel irreversibly made it private, so this bug only impacted
+  channels archived after the upgrade to Zulip 10.0).
+- Fixed a subtle issue involving file upload error handling with `tusd`.
+- Moved the Prometheus metrics port for Smokescreen to 4760, to not conflict
+  with the ports Zulip uses with more than 10 Tornado processes.
+- Improved scroll position when selecting a very tall message using the `Up`
+  keyboard shortcut.
+- Improved integration URL construction interface for Git integrations.
+- Improved behavior when viewing a channel feed in channels containing very old
+  unread messages.
+- Documented the new LaTeX copy/paste functionality.
+- Upgraded Python dependencies.
+- Updated translations.
+
+### Zulip Server 10.1
+
+_Released 2025-03-28_
+
+- CVE-2025-27149: "Public data" administrative data exports can leak
+  metadata for non-exported messages and client user agent strings.
+- CVE-2025-30368: Organization exports can be deleted by
+  administrators of a different organization.
+- CVE-2025-30369: Custom profile fields can be deleted by
+  administrators of a different organization.
+- Fixed typing notifications not being displayed in topic permalink views.
+- Fixed a bug that could cause the compose box send button to be
+  improperly disabled.
+- Fixed multiple display bugs involving the general chat topic.
+- Fixed multiple UI live-update issues with new groups-based permissions.
+- Fixed exceptions using `tusd` with optional `AWS_*` settings not set.
+- Fixed Python virtual environments being incorrectly created
+  referencing `/root/`, which could cause the upgrade tool or
+  installer to fail.
+- Fixed instructions for upgrading to Ubuntu 24.04 on Zulip 10.x.
+- Fixed an exception upgrading to 10.x on servers that had previously
+  hand-deleted users or realms from the database (not using the
+  official management commands) in a way that leaked
+  `DirectMessageGroup` objects associated with them.
+- Fixed the setting to never de-emphasize inactive channels, which
+  broke in 10.0.
+- Fixed several visual glitches with non-default font sizes.
+- Fixed minor inbox and recent conversations glitches.
+- Fixed a dark theme visual glitch with the to-do widget.
+- Fixed an exception when setting a password longer than 72 characters.
+- Fixed the “find organization” emails not being properly translated.
+- Fixed left sidebar unread counts being misaligned on Safari.
+- Fixed reply button text in inbox and recent conversations views.
+- Optimized the main database query to fetch unread message counts.
+- Tweaked notification banner for older unreads to be shown only in
+  conversation views.
+- Tweaked warning banner for mentioning a group none of whose
+  recipients are subscribed to avoid generating duplicate banners.
+- Extended `nginx` configuration override support.
+- Updated translations.
+
+### Zulip Server 10.0
+
+_Released 2025-03-20_
 
 #### Highlights
 
+- Replaced the compact mode setting with flexible options for font
+  size and line spacing in the Zulip web app.
 - Redesigned how channel messages without a topic work to be much
   nicer, displayed as a special _general chat_ topic.
 - Redesigned the left sidebar visually, adding convenient "New topic"
@@ -62,7 +166,8 @@ _Released 2025-03-06_
   visiting a conversation.
 - Reworked the "archive channel" functionality to preserve channel
   names and content access, with a view towards supporting unarchiving
-  channels.
+  channels. Most settings for archived channels can be edited, to
+  allow adjusting access to archived channels.
 - Significantly improved the performance of rendering message feeds in
   the web application, and improved client-side caching to allow
   instantly rendering most recently visited views.
@@ -95,6 +200,10 @@ _Released 2025-03-06_
   server, even if the secrets have been lost.
 - Added new typing indicators for when someone is editing a message
   that you're viewing in the message feed.
+- Added a new 2-minute onboarding video focused on the basics of
+  navigating the Zulip interface. The feature comes with a setting
+  allowing installations to self-host the video (or extend or replace
+  it with their own site-specific content).
 
 #### Full feature changelog
 
@@ -115,11 +224,14 @@ _Released 2025-03-06_
 - Added `*` keyboard shortcut for navigating to starred messages view.
 - Added new personal and organization-level settings controlling
   access to and display of any future AI features.
+- Added a new organization setting for who can manage billing,
+  replacing a single-user field with a normal permissions setting.
 - Added UI support for data exports with member consent, including a
   privacy setting for users to specify whether their private data can
   be included in data exports.
 - Added new settings option to allow viewing message moves but not
-  message edits in message edit history.
+  message edits in message edit history. Improved how message moves
+  are presented in the message edit history UI.
 - Added new prompt when editing a message to remove the last reference
   to a previously uploaded file.
 - Added new prompt when your timezone doesn't match your profile
@@ -130,6 +242,9 @@ _Released 2025-03-06_
   panel. Previously, it was only accessible in the compose area.
 - Added a wizard for creating collaborative to-do widgets.
 - Added a new channel details menu when clicking channel pills.
+- Added a new permission setting for resolving topics, separate from
+  the permission for moving messages.
+- Added new `is:muted` search operator, replacing the older `-in:home`.
 - Added live-update support to several message views: Reactions,
   Starred messages, `is:followed`, and other views that previously did
   not support it. Improved the labels for the resolved and unresolved
@@ -140,6 +255,14 @@ _Released 2025-03-06_
 - Added support for editing group membership on user profiles.
 - Added a clarifying modal the first time a user tries to resolve a
   topic, confirming that they understand it's resolved for everyone.
+- Added a confirmation modal when trying to bulk mark as unread in an
+  interleaved view like the combined feed.
+- Added a new warning banner when mentioning a group, none of whose
+  members will see the message being drafted.
+- Added a new warning banner for situations where a user has 50K+
+  unread messages and that caused Zulip to take them to the oldest
+  recent unread, not the very oldest unread message, after someone
+  replied to a months-old conversation.
 - Added informative new error output when attempting to load a data
   export into a Zulip server running a different server version.
 - Added support for scheduling deletion of all data when deactivating
@@ -149,7 +272,8 @@ _Released 2025-03-06_
   support those image formats. Animated images with very high total
   pixel counts now preview the first few frames, rather than not
   offering a preview at all.
-- Increased the size of image and video previews.
+- Increased the size of image and video previews, and improved the
+  play button experience for video previews.
 - Added a new API endpoint for bulk-fetching messages by ID. Improved
   API support for fetching users by email address.
 - Added API support for changing another user's email address, with a
@@ -198,11 +322,13 @@ _Released 2025-03-06_
   options in narrow windows and handle too-long messages.
 - Redesigned icons for bots, deactivated users, copying, and many
   other actions.
+- Redesigned connection error and reloading banners.
 - Redesigned the UI for changing your name or email address.
 - Redesigned the top-of-screen banners.
 - Redesigned the modal for moving topics, including a new warning
   banner when moving messages will combine two topics.
 - Redesigned the channel color picker experience.
+- Redesigned many buttons in settings.
 - Redesigned how users are displayed across the app to be consistent
   in how deactivated status, status emoji, guest markers, and other
   decorations appear.
@@ -278,6 +404,7 @@ _Released 2025-03-06_
 - Fixed inconsistencies in display order of group direct message recipients.
 - Renamed `stream` to `channel` in generated URLs, now that enough
   time has passed since `channel` support was added to mobile clients.
+- Hardened the message-fetching code path against access control bugs.
 - Optimized the presence synchronization protocol to use dramatically
   less network and CPU resources in large organizations.
 - Optimized new database creation runtime by squashing almost 700
@@ -846,8 +973,10 @@ _Released 2024-01-24_
   authentication could cause other queue workers to not progress
   properly on low-memory Zulip servers.
 - Added support for using PostgreSQL 16 as the database. See the
-  PostgreSQL upgrade documentation if you’re interested in upgrading
-  an existing server to newer Postgres.
+  [PostgreSQL upgrade
+  documentation](../production/upgrade.md#upgrading-postgresql) if
+  you’re interested in upgrading an existing server to newer
+  PostgreSQL.
 - Added support for explicitly deactivating a mobile push
   notifications registration.
 - Added support for a new class of custom authentication hook.
@@ -1291,7 +1420,7 @@ _Released 2023-05-31_
 - Added additional confirmation dialogs for actions deserving caution,
   including marking all messages as read, removing the last user from a
   private stream, and disabling all notifications for direct messages.
-- Added support for Postgres 15, and removed support for Postgres 11.
+- Added support for PostgreSQL 15, and removed support for PostgreSQL 11.
 - Added new `z` keyboard shortcut to view a message in context.
 - Added new `=` keyboard shortcut to upvote an existing emoji reaction.
 - Changed the `s` keyboard shortcut to be a toggle, replacing the
@@ -1698,8 +1827,8 @@ _Released 2022-11-17_
 #### Upgrade notes for 6.0
 
 - Installations using [docker-zulip][docker-zulip] will need to [upgrade
-  Postgres][docker-zulip-upgrade-database] before upgrading to Zulip
-  6.0, because the previous default of Postgres 10 is no longer
+  PostgreSQL][docker-zulip-upgrade-database] before upgrading to Zulip
+  6.0, because the previous default of PostgreSQL 10 is no longer
   supported by this release.
 - Installations using the AzureAD authentication backend will need to
   update `/etc/zulip/zulip-secrets.conf` after upgrading. The
@@ -2009,7 +2138,8 @@ _Released 2022-03-29_
 - Improved various interaction and performance details in "Recent topics".
 - Improved styling for poll and todo list widgets.
 - Zulip now supports configuring the database name and username when
-  using a remote Postgres server. Previously, these were hardcoded to "zulip".
+  using a remote PostgreSQL server. Previously, these were hardcoded
+  to "zulip".
 - Migrated many tooltips to prettier tooltips powered by TippyJS.
 - Autocomplete is now available when editing topics.
 - Typeahead for choosing a topic now consistently fetches the full set
@@ -4579,7 +4709,8 @@ _Released 2015-10-19_
 This section links to the upgrade notes from past releases, so you can
 easily read them all when upgrading across multiple releases.
 
-- [Draft upgrade notes for 10.0](#upgrade-notes-for-100)
+- [Draft upgrade notes for 11.0](#upgrade-notes-for-110)
+- [Upgrade notes for 10.0](#upgrade-notes-for-100)
 - [Upgrade notes for 9.0](#upgrade-notes-for-90)
 - [Upgrade notes for 8.0](#upgrade-notes-for-80)
 - [Upgrade notes for 7.0](#upgrade-notes-for-70)

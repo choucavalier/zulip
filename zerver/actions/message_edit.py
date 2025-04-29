@@ -25,9 +25,11 @@ from zerver.actions.message_send import (
 )
 from zerver.actions.uploads import AttachmentChangeResult, check_attachment_reference_change
 from zerver.actions.user_topics import bulk_do_set_user_topic_visibility_policy
+from zerver.lib import utils
 from zerver.lib.exceptions import (
     JsonableError,
     MessageMoveError,
+    PreviousMessageContentMismatchedError,
     StreamWildcardMentionNotAllowedError,
     TopicWildcardMentionNotAllowedError,
 )
@@ -56,6 +58,7 @@ from zerver.lib.streams import (
     notify_stream_is_recently_active_update,
 )
 from zerver.lib.string_validation import check_stream_topic
+from zerver.lib.thumbnail import get_user_upload_previews, rewrite_thumbnailed_images
 from zerver.lib.timestamp import datetime_to_timestamp
 from zerver.lib.topic import (
     ORIG_TOPIC,
@@ -76,6 +79,7 @@ from zerver.lib.user_topics import get_users_with_user_topic_visibility_policy
 from zerver.lib.widget import is_widget_message
 from zerver.models import (
     ArchivedAttachment,
+    ArchivedMessage,
     Attachment,
     Message,
     Reaction,
@@ -107,9 +111,10 @@ def validate_message_edit_payload(
     topic_name: str | None,
     propagate_mode: str | None,
     content: str | None,
+    prev_content_sha256: str | None,
 ) -> None:
     """
-    Checks that the data sent is well-formed. Does not handle editability, permissions etc.
+    Validates that a message edit request is well-formed. Does not handle permissions.
     """
     if topic_name is None and content is None and stream_id is None:
         raise JsonableError(_("Nothing to change"))
@@ -141,6 +146,14 @@ def validate_message_edit_payload(
     # Right now, we prevent users from editing widgets.
     if content is not None and is_widget_message(message):
         raise JsonableError(_("Widgets cannot be edited."))
+
+    # We don't restrict this check to requests to edit content, to
+    # give the parameter a pure meaning. But clients sending this for
+    # topic moves are likely doing so in error.
+    if prev_content_sha256 is not None and prev_content_sha256 != utils.sha256_hash(
+        message.content
+    ):
+        raise PreviousMessageContentMismatchedError
 
 
 def validate_user_can_edit_message(
@@ -1246,6 +1259,7 @@ def check_time_limit_for_change_all_propagate_mode(
             user_profile=user_profile,
             message__recipient_id=message.recipient_id,
             message__subject__iexact=message.topic_name(),
+            message__is_channel_message=True,
         ).values_list("message_id", flat=True)
         messages_allowed_to_move: list[int] = list(
             Message.objects.filter(
@@ -1369,6 +1383,7 @@ def check_update_message(
     send_notification_to_old_thread: bool = True,
     send_notification_to_new_thread: bool = True,
     content: str | None = None,
+    prev_content_sha256: str | None = None,
 ) -> UpdateMessageResult:
     """This will update a message given the message id and user profile.
     It checks whether the user profile has the permission to edit the message
@@ -1396,7 +1411,9 @@ def check_update_message(
         if topic_name == message.topic_name():
             topic_name = None
 
-    validate_message_edit_payload(message, stream_id, topic_name, propagate_mode, content)
+    validate_message_edit_payload(
+        message, stream_id, topic_name, propagate_mode, content, prev_content_sha256
+    )
 
     message_edit_request = build_message_edit_request(
         message=message,
@@ -1423,7 +1440,6 @@ def check_update_message(
             # and the time limit for editing topics is passed, raise an error.
             if (
                 user_profile.realm.move_messages_within_stream_limit_seconds is not None
-                and not user_profile.is_realm_admin
                 and not user_profile.is_moderator
             ):
                 deadline_seconds = (
@@ -1489,7 +1505,6 @@ def check_update_message(
 
             if (
                 user_profile.realm.move_messages_between_streams_limit_seconds is not None
-                and not user_profile.is_realm_admin
                 and not user_profile.is_moderator
             ):
                 deadline_seconds = (
@@ -1503,7 +1518,6 @@ def check_update_message(
 
         if (
             propagate_mode == "change_all"
-            and not user_profile.is_realm_admin
             and not user_profile.is_moderator
             and message_edit_request.is_message_moved
             and not message_edit_request.topic_resolved
@@ -1561,3 +1575,31 @@ def check_update_message(
             notify_stream_is_recently_active_update(new_stream, is_stream_active)
 
     return updated_message_result
+
+
+@transaction.atomic(durable=True)
+def re_thumbnail(
+    message_class: type[Message] | type[ArchivedMessage], message_id: int, enqueue: bool
+) -> None:
+    message = message_class.objects.select_for_update().get(id=message_id)
+    assert message.rendered_content is not None
+    image_metadata = get_user_upload_previews(
+        message.realm_id,
+        message.rendered_content,
+        enqueue=enqueue,
+        lock=True,
+    )
+
+    new_content, _ = rewrite_thumbnailed_images(
+        message.rendered_content,
+        image_metadata,
+    )
+
+    if new_content is None:
+        pass
+    elif isinstance(message, Message):
+        do_update_embedded_data(message.sender, message, new_content)
+    else:
+        assert isinstance(message, ArchivedMessage)
+        message.rendered_content = new_content
+        message.save(update_fields=["rendered_content"])

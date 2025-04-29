@@ -4,7 +4,7 @@ import copy
 import logging
 import time
 from collections.abc import Callable, Collection, Iterable, Sequence
-from typing import Any
+from typing import Any, Literal
 
 from django.conf import settings
 from django.utils.translation import gettext as _
@@ -60,6 +60,7 @@ from zerver.lib.thumbnail import THUMBNAIL_OUTPUT_FORMATS
 from zerver.lib.timestamp import datetime_to_timestamp
 from zerver.lib.timezone import canonicalize_timezone
 from zerver.lib.topic import TOPIC_NAME, maybe_rename_general_chat_to_empty_topic
+from zerver.lib.types import UserGroupMembersData
 from zerver.lib.user_groups import (
     get_group_setting_value_for_register_api,
     get_recursive_membership_groups,
@@ -74,6 +75,7 @@ from zerver.lib.users import (
     get_data_for_inaccessible_user,
     get_users_for_api,
     is_administrator_role,
+    is_moderator_role,
     max_message_id_for_user,
 )
 from zerver.lib.utils import optional_bytes_to_mib
@@ -135,7 +137,7 @@ def has_pending_sponsorship_request(
         user_has_billing_access = user_profile is not None and user_profile.has_billing_access
 
     if settings.CORPORATE_ENABLED and user_profile is not None and user_has_billing_access:
-        from corporate.models import get_customer_by_realm
+        from corporate.models.customers import get_customer_by_realm
 
         customer = get_customer_by_realm(user_profile.realm)
         if customer is not None:
@@ -156,7 +158,7 @@ def fetch_initial_state_data(
     slim_presence: bool = False,
     presence_last_update_id_fetched_by_client: int | None = None,
     presence_history_limit_days: int | None = None,
-    include_subscribers: bool = True,
+    include_subscribers: bool | Literal["partial"] = True,
     include_streams: bool = True,
     spectator_requested_language: str | None = None,
     pronouns_field_type_supported: bool = True,
@@ -242,6 +244,12 @@ def fetch_initial_state_data(
             include_deactivated_groups=include_deactivated_groups,
             fetch_anonymous_group_membership=True,
         )
+        anonymous_group_membership_data_dict: dict[int, UserGroupMembersData] = {}
+        for key, value in realm_groups_data.anonymous_group_membership.items():
+            anonymous_group_membership_data_dict[key] = UserGroupMembersData(
+                direct_members=value["direct_members"],
+                direct_subgroups=value["direct_subgroups"],
+            )
 
     if want("alert_words"):
         state["alert_words"] = [] if user_profile is None else user_alert_words(user_profile)
@@ -373,7 +381,7 @@ def fetch_initial_state_data(
         for setting_name in Realm.REALM_PERMISSION_GROUP_SETTINGS:
             setting_group_id = getattr(realm, setting_name + "_id")
             state["realm_" + setting_name] = get_group_setting_value_for_register_api(
-                setting_group_id, realm_groups_data.anonymous_group_membership
+                setting_group_id, anonymous_group_membership_data_dict
             )
 
         state["realm_create_public_stream_policy"] = (
@@ -741,10 +749,10 @@ def fetch_initial_state_data(
                 user_profile,
                 include_subscribers=include_subscribers,
                 include_archived_channels=archived_channels,
-                anonymous_group_membership=realm_groups_data.anonymous_group_membership,
+                anonymous_group_membership=anonymous_group_membership_data_dict,
             )
         else:
-            sub_info = get_web_public_subs(realm, realm_groups_data.anonymous_group_membership)
+            sub_info = get_web_public_subs(realm, anonymous_group_membership_data_dict)
 
         state["subscriptions"] = sub_info.subscriptions
         state["unsubscribed"] = sub_info.unsubscribed
@@ -777,8 +785,9 @@ def fetch_initial_state_data(
             state["streams"] = do_get_streams(
                 user_profile,
                 include_web_public=True,
-                include_all=user_profile.is_realm_admin,
-                anonymous_group_membership=realm_groups_data.anonymous_group_membership,
+                exclude_archived=not archived_channels,
+                include_all=True,
+                anonymous_group_membership=anonymous_group_membership_data_dict,
             )
         else:
             # TODO: This line isn't used by the web app because it
@@ -786,7 +795,7 @@ def fetch_initial_state_data(
             # be used when the mobile apps support logged-out
             # access.
             state["streams"] = get_web_public_streams(
-                realm, realm_groups_data.anonymous_group_membership
+                realm, anonymous_group_membership_data_dict
             )  # nocoverage
     if want("default_streams"):
         if settings_user.is_guest:
@@ -1088,7 +1097,7 @@ def apply_event(
                 if "role" in person:
                     state["is_admin"] = is_administrator_role(person["role"])
                     state["is_owner"] = person["role"] == UserProfile.ROLE_REALM_OWNER
-                    state["is_moderator"] = person["role"] == UserProfile.ROLE_MODERATOR
+                    state["is_moderator"] = is_moderator_role(person["role"])
                     state["is_guest"] = person["role"] == UserProfile.ROLE_GUEST
                     # Recompute properties based on is_admin/is_guest
                     state["can_create_private_streams"] = user_profile.can_create_private_streams()
@@ -1204,17 +1213,17 @@ def apply_event(
 
                     for setting_name in Realm.REALM_PERMISSION_GROUP_SETTINGS:
                         if not isinstance(state["realm_" + setting_name], int):
-                            state["realm_" + setting_name].direct_members = [
+                            state["realm_" + setting_name]["direct_members"] = [
                                 user_id
-                                for user_id in state["realm_" + setting_name].direct_members
+                                for user_id in state["realm_" + setting_name]["direct_members"]
                                 if user_id != person_user_id
                             ]
                     for group in state["realm_user_groups"]:
                         for setting_name in NamedUserGroup.GROUP_PERMISSION_SETTINGS:
                             if not isinstance(group[setting_name], int):
-                                group[setting_name].direct_members = [
+                                group[setting_name]["direct_members"] = [
                                     user_id
-                                    for user_id in group[setting_name].direct_members
+                                    for user_id in group[setting_name]["direct_members"]
                                     if user_id != person_user_id
                                 ]
         elif event["op"] == "remove":
@@ -1300,53 +1309,47 @@ def apply_event(
 
         if event["op"] == "delete":
             deleted_stream_ids = {stream["stream_id"] for stream in event["streams"]}
+
+            state["subscriptions"] = [
+                stream
+                for stream in state["subscriptions"]
+                if stream["stream_id"] not in deleted_stream_ids
+            ]
+
+            state["unsubscribed"] = [
+                stream
+                for stream in state["unsubscribed"]
+                if stream["stream_id"] not in deleted_stream_ids
+            ]
+
+            state["never_subscribed"] = [
+                stream
+                for stream in state["never_subscribed"]
+                if stream["stream_id"] not in deleted_stream_ids
+            ]
+
             if "streams" in state:
                 state["streams"] = [
                     s for s in state["streams"] if s["stream_id"] not in deleted_stream_ids
                 ]
 
-            if archived_channels:
-                for stream in state["subscriptions"]:
-                    if stream["stream_id"] in deleted_stream_ids:
-                        stream["is_archived"] = True
-
-                for stream in state["unsubscribed"]:
-                    if stream["stream_id"] in deleted_stream_ids:
-                        stream["is_archived"] = True
-                        stream["first_message_id"] = Stream.objects.get(
-                            id=stream["stream_id"]
-                        ).first_message_id
-
-                for stream in state["never_subscribed"]:
-                    if stream["stream_id"] in deleted_stream_ids:
-                        stream["is_archived"] = True
-                        stream["first_message_id"] = Stream.objects.get(
-                            id=stream["stream_id"]
-                        ).first_message_id
-            else:
-                state["subscriptions"] = [
-                    stream
-                    for stream in state["subscriptions"]
-                    if stream["stream_id"] not in deleted_stream_ids
-                ]
-
-                state["unsubscribed"] = [
-                    stream
-                    for stream in state["unsubscribed"]
-                    if stream["stream_id"] not in deleted_stream_ids
-                ]
-
-                state["never_subscribed"] = [
-                    stream
-                    for stream in state["never_subscribed"]
-                    if stream["stream_id"] not in deleted_stream_ids
-                ]
-
         if event["op"] == "update":
             # For legacy reasons, we call stream data 'subscriptions' in
             # the state var here, for the benefit of the JS code.
+            for obj in state["subscriptions"]:
+                if obj["name"].lower() == event["name"].lower():
+                    obj[event["property"]] = event["value"]
+                    if event["property"] == "description":
+                        obj["rendered_description"] = event["rendered_description"]
+                    if event.get("history_public_to_subscribers") is not None:
+                        obj["history_public_to_subscribers"] = event[
+                            "history_public_to_subscribers"
+                        ]
+                    if event.get("is_web_public") is not None:
+                        obj["is_web_public"] = event["is_web_public"]
+
+            updated_first_message_ids = dict()
             for sub_list in [
-                state["subscriptions"],
                 state["unsubscribed"],
                 state["never_subscribed"],
             ]:
@@ -1361,6 +1364,17 @@ def apply_event(
                             ]
                         if event.get("is_web_public") is not None:
                             obj["is_web_public"] = event["is_web_public"]
+                        if (
+                            event["property"] == "is_archived"
+                            and event["value"]
+                            and obj["first_message_id"] is None
+                        ):
+                            new_first_message_id = Stream.objects.get(
+                                id=obj["stream_id"]
+                            ).first_message_id
+                            assert new_first_message_id is not None
+                            obj["first_message_id"] = new_first_message_id
+                            updated_first_message_ids[obj["stream_id"]] = new_first_message_id
             # Also update the pure streams data
             if "streams" in state:
                 for stream in state["streams"]:
@@ -1376,6 +1390,13 @@ def apply_event(
                                 ]
                             if event.get("is_web_public") is not None:
                                 stream["is_web_public"] = event["is_web_public"]
+                            if (
+                                event["property"] == "is_archived"
+                                and stream["stream_id"] in updated_first_message_ids
+                            ):
+                                stream["first_message_id"] = updated_first_message_ids[
+                                    stream["stream_id"]
+                                ]
 
     elif event["type"] == "default_streams":
         state["realm_default_streams"] = event["default_streams"]
@@ -1887,7 +1908,7 @@ def do_events_register(
     event_types: Sequence[str] | None = None,
     queue_lifespan_secs: int = 0,
     all_public_streams: bool = False,
-    include_subscribers: bool = True,
+    include_subscribers: bool | Literal["partial"] = True,
     include_streams: bool = True,
     client_capabilities: ClientCapabilities = DEFAULT_CLIENT_CAPABILITIES,
     narrow: Collection[NeverNegatedNarrowTerm] = [],
@@ -2017,7 +2038,7 @@ def do_events_register(
         fetch_event_types=fetch_event_types,
         client_gravatar=client_gravatar,
         slim_presence=slim_presence,
-        include_subscribers=include_subscribers,
+        include_subscribers=True if include_subscribers == "partial" else include_subscribers,
         linkifier_url_template=linkifier_url_template,
         user_list_incomplete=user_list_incomplete,
         include_deactivated_groups=include_deactivated_groups,

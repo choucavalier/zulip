@@ -18,7 +18,6 @@ from django.shortcuts import redirect, render
 from django.template.response import TemplateResponse
 from django.urls import reverse
 from django.utils.translation import get_language
-from django.views.defaults import server_error
 from django_auth_ldap.backend import LDAPBackend, _LDAPUser
 from pydantic import Json, NonNegativeInt, StringConstraints
 
@@ -47,6 +46,7 @@ from zerver.context_processors import (
 )
 from zerver.decorator import add_google_analytics, do_login, require_post
 from zerver.forms import (
+    CaptchaRealmCreationForm,
     FindMyTeamForm,
     HomepageForm,
     RealmCreationForm,
@@ -57,6 +57,7 @@ from zerver.lib.email_validation import email_allowed_for_realm, validate_email_
 from zerver.lib.exceptions import RateLimitedError
 from zerver.lib.i18n import (
     get_browser_language_code,
+    get_default_language_for_anonymous_user,
     get_default_language_for_new_user,
     get_language_name,
 )
@@ -891,16 +892,25 @@ def create_realm(request: HttpRequest, creation_key: str | None = None) -> HttpR
             request,
             "zerver/portico_error_pages/realm_creation_link_invalid.html",
         )
-    if not settings.OPEN_REALM_CREATION and key_record is None:
-        return TemplateResponse(
-            request,
-            "zerver/portico_error_pages/realm_creation_disabled.html",
-        )
+    if key_record is None:
+        if not settings.OPEN_REALM_CREATION:
+            return TemplateResponse(
+                request,
+                "zerver/portico_error_pages/realm_creation_disabled.html",
+            )
+        if not password_auth_enabled():
+            return TemplateResponse(
+                request,
+                "zerver/portico_error_pages/realm_creation_disabled.html",
+            )
 
     # When settings.OPEN_REALM_CREATION is enabled, anyone can create a new realm,
     # with a few restrictions on their email address.
     if request.method == "POST":
-        form = RealmCreationForm(request.POST)
+        if settings.USING_CAPTCHA:
+            form: RealmCreationForm = CaptchaRealmCreationForm(data=request.POST, request=request)
+        else:
+            form = RealmCreationForm(request.POST)
         if form.is_valid():
             try:
                 rate_limit_request_by_ip(request, domain="sends_email_by_ip")
@@ -945,7 +955,7 @@ def create_realm(request: HttpRequest, creation_key: str | None = None) -> HttpR
             except EmailNotDeliveredError:
                 logging.exception("Failed to deliver email during realm creation")
                 if settings.CORPORATE_ENABLED:
-                    return server_error(request)
+                    return render(request, "500.html", status=500)
                 return config_error(request, "smtp")
 
             if key_record is not None:
@@ -970,11 +980,15 @@ def create_realm(request: HttpRequest, creation_key: str | None = None) -> HttpR
         initial_data = {
             "realm_default_language": default_language_code,
         }
-        form = RealmCreationForm(initial=initial_data)
+        if settings.USING_CAPTCHA:
+            form = CaptchaRealmCreationForm(request=request, initial=initial_data)
+        else:
+            form = RealmCreationForm(initial=initial_data)
 
     context = get_realm_create_form_context()
     context.update(
         {
+            "has_captcha": settings.USING_CAPTCHA,
             "form": form,
             "current_url": request.get_full_path,
         }
@@ -1069,6 +1083,7 @@ def accounts_home(
         form = HomepageForm(
             request.POST,
             realm=realm,
+            require_password_backend=True,
             from_multiuse_invite=from_multiuse_invite,
             invited_as=invited_as,
         )
@@ -1106,7 +1121,7 @@ def accounts_home(
             except EmailNotDeliveredError:
                 logging.exception("Failed to deliver email during user registration")
                 if settings.CORPORATE_ENABLED:
-                    return server_error(request)
+                    return render(request, "500.html", status=500)
                 return config_error(request, "smtp")
             signup_send_confirm_url = reverse("signup_send_confirm")
             query = urlencode({"email": email})
@@ -1241,6 +1256,7 @@ def find_account(request: HttpRequest) -> HttpResponse:
                     ),
                     from_address=FromAddress.SUPPORT,
                     request=request,
+                    language=get_default_language_for_anonymous_user(request),
                 )
     return render(
         request,

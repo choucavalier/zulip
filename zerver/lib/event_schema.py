@@ -115,7 +115,7 @@ from zerver.lib.event_types import (
     PlanTypeData,
 )
 from zerver.lib.topic import ORIG_TOPIC, TOPIC_NAME
-from zerver.lib.types import UserGroupMembersData
+from zerver.lib.types import UserGroupMembersDict
 from zerver.models import Realm, RealmUserDefault, Stream, UserProfile
 
 
@@ -529,6 +529,7 @@ def check_stream_update(
         "name",
         "stream_id",
         "first_message_id",
+        "is_archived",
     }
 
     if prop == "description":
@@ -549,7 +550,13 @@ def check_stream_update(
         assert value in Stream.STREAM_POST_POLICY_TYPES
     elif prop in Stream.stream_permission_group_settings:
         assert extra_keys == set()
-        assert isinstance(value, int | UserGroupMembersData)
+        assert isinstance(value, int | dict)
+        # We cannot validate a TypedDict using isinstance, thus
+        # requiring this check.
+        if isinstance(value, dict):
+            expected_keys = set(inspect.get_annotations(UserGroupMembersDict).keys())
+            keys = set(value.keys())
+            assert expected_keys == keys
     elif prop == "first_message_id":
         assert extra_keys == set()
         assert isinstance(value, int)
@@ -557,6 +564,9 @@ def check_stream_update(
         assert extra_keys == set()
         assert isinstance(value, bool)
     elif prop == "is_announcement_only":
+        assert extra_keys == set()
+        assert isinstance(value, bool)
+    elif prop == "is_archived":
         assert extra_keys == set()
         assert isinstance(value, bool)
     else:

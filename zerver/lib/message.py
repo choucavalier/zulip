@@ -6,9 +6,10 @@ from typing import Any, TypedDict
 
 from django.conf import settings
 from django.db import connection
-from django.db.models import Exists, Max, OuterRef, QuerySet, Sum
+from django.db.models import Exists, F, Max, OuterRef, QuerySet, Sum
 from django.utils.timezone import now as timezone_now
 from django.utils.translation import gettext as _
+from django_cte import With
 from psycopg2.sql import SQL
 
 from analytics.lib.counts import COUNT_STATS
@@ -17,7 +18,7 @@ from zerver.lib.cache import generic_bulk_cached_fetch, to_dict_cache_key_id
 from zerver.lib.display_recipient import get_display_recipient_by_id
 from zerver.lib.exceptions import JsonableError, MissingAuthenticationError
 from zerver.lib.markdown import MessageRenderingResult
-from zerver.lib.mention import MentionData
+from zerver.lib.mention import MentionData, sender_can_mention_group
 from zerver.lib.message_cache import MessageDict, extract_message_dict, stringify_message_dict
 from zerver.lib.partial import partial
 from zerver.lib.request import RequestVariableConversionError
@@ -40,11 +41,7 @@ from zerver.lib.topic import (
     messages_for_topic,
 )
 from zerver.lib.types import FormattedEditHistoryEvent, UserDisplayRecipient
-from zerver.lib.user_groups import (
-    UserGroupMembershipDetails,
-    get_recursive_membership_groups,
-    user_has_permission_for_group_setting,
-)
+from zerver.lib.user_groups import UserGroupMembershipDetails, get_recursive_membership_groups
 from zerver.lib.user_topics import build_get_topic_visibility_policy, get_topic_visibility_policy
 from zerver.lib.users import get_inaccessible_user_ids
 from zerver.models import (
@@ -59,10 +56,8 @@ from zerver.models import (
     UserTopic,
 )
 from zerver.models.constants import MAX_TOPIC_NAME_LENGTH
-from zerver.models.groups import SystemGroups
 from zerver.models.messages import get_usermessage_by_message_id
 from zerver.models.realms import MessageEditHistoryVisibilityPolicyEnum
-from zerver.models.users import is_cross_realm_bot_email
 
 
 class MessageDetailsDict(TypedDict, total=False):
@@ -479,7 +474,6 @@ def access_web_public_message(
     # These should all have been enforced by the code in
     # get_web_public_streams_queryset
     assert stream.is_web_public
-    assert not stream.deactivated
     assert not stream.invite_only
     assert stream.history_public_to_subscribers
 
@@ -845,15 +839,19 @@ def get_raw_unread_data(
         .exclude(
             message__recipient_id__in=excluded_recipient_ids,
         )
+        .annotate(
+            recipient_id=F("message__recipient_id"),
+            sender_id=F("message__sender_id"),
+            topic=F(MESSAGE__TOPIC),
+        )
         .values(
             "message_id",
-            "message__sender_id",
-            MESSAGE__TOPIC,
-            "message__recipient_id",
-            "message__recipient__type",
-            "message__recipient__type_id",
+            "sender_id",
+            "topic",
             "flags",
+            "recipient_id",
         )
+        # Descending order, so truncation keeps the latest unreads.
         .order_by("-message_id")
     )
 
@@ -867,11 +865,55 @@ def get_raw_unread_data(
             where=[UserMessage.where_unread()],
         )
 
-    # Limit unread messages for performance reasons.
-    user_msgs = list(user_msgs[:MAX_UNREAD_MESSAGES])
+    with connection.cursor() as cursor:
+        try:
+            # Force-disable (parallel) bitmap heap scans.  The
+            # parallel nature of this means that the LIMIT cannot be
+            # pushed down into the walk of the index, and it also
+            # requires an additional outer sort -- which is all
+            # unnecessary, as the zerver_usermessage_unread_message_id
+            # index is properly ordered already.  This is all due to
+            # statistics mis-estimations, since partial indexes do not
+            # have their own statistics.
+            cursor.execute("SET enable_bitmapscan TO off")
 
-    rows = list(reversed(user_msgs))
-    return extract_unread_data_from_um_rows(rows, user_profile)
+            # Limit unread messages for performance reasons.  We do this
+            # inside a CTE, such that the join to Recipients, below, can't be
+            # implied to remove rows, and thus allows a Nested Loop join,
+            # potentially memoized to reduce the number of Recipient lookups.
+            cte = With(user_msgs[:MAX_UNREAD_MESSAGES])
+
+            user_msgs = (
+                cte.join(Recipient, id=cte.col.recipient_id)
+                .with_cte(cte)
+                .annotate(
+                    message_id=cte.col.message_id,
+                    sender_id=cte.col.sender_id,
+                    recipient_id=cte.col.recipient_id,
+                    topic=cte.col.topic,
+                    flags=cte.col.flags,
+                    recipient__type=F("type"),
+                    recipient__type_id=F("type_id"),
+                )
+                .values(
+                    "message_id",
+                    "sender_id",
+                    "topic",
+                    "flags",
+                    "recipient_id",
+                    "recipient__type",
+                    "recipient__type_id",
+                )
+                # Output in ascending order. We can't just reverse,
+                # since the CTE join does not guarantee that it
+                # preserves the original descending order.
+                .order_by("message_id")
+            )
+
+            rows = list(user_msgs)
+        finally:
+            cursor.execute("SET enable_bitmapscan TO on")
+        return extract_unread_data_from_um_rows(rows, user_profile)
 
 
 def extract_unread_data_from_um_rows(
@@ -938,13 +980,13 @@ def extract_unread_data_from_um_rows(
     for row in rows:
         total_unreads += 1
         message_id = row["message_id"]
-        msg_type = row["message__recipient__type"]
-        recipient_id = row["message__recipient_id"]
-        sender_id = row["message__sender_id"]
+        msg_type = row["recipient__type"]
+        recipient_id = row["recipient_id"]
+        sender_id = row["sender_id"]
 
         if msg_type == Recipient.STREAM:
-            stream_id = row["message__recipient__type_id"]
-            topic_name = row[MESSAGE__TOPIC]
+            stream_id = row["recipient__type_id"]
+            topic_name = row["topic"]
             stream_dict[message_id] = dict(
                 stream_id=stream_id,
                 topic=topic_name,
@@ -954,7 +996,7 @@ def extract_unread_data_from_um_rows(
 
         elif msg_type == Recipient.PERSONAL:
             if sender_id == user_profile.id:
-                other_user_id = row["message__recipient__type_id"]
+                other_user_id = row["recipient__type_id"]
             else:
                 other_user_id = sender_id
 
@@ -980,8 +1022,8 @@ def extract_unread_data_from_um_rows(
             mentions.add(message_id)
         if is_stream_wildcard_mentioned or is_topic_wildcard_mentioned:
             if msg_type == Recipient.STREAM:
-                stream_id = row["message__recipient__type_id"]
-                topic_name = row[MESSAGE__TOPIC]
+                stream_id = row["recipient__type_id"]
+                topic_name = row["topic"]
                 if not is_row_muted(stream_id, recipient_id, topic_name):
                     mentions.add(message_id)
             else:  # nocoverage # TODO: Test wildcard mentions in direct messages.
@@ -1469,28 +1511,9 @@ def check_user_group_mention_allowed(sender: UserProfile, user_group_ids: list[i
     user_groups = NamedUserGroup.objects.filter(id__in=user_group_ids).select_related(
         "can_mention_group", "can_mention_group__named_user_group"
     )
-    sender_is_system_bot = is_cross_realm_bot_email(sender.delivery_email)
 
     for group in user_groups:
-        can_mention_group = group.can_mention_group
-        if (
-            hasattr(can_mention_group, "named_user_group")
-            and can_mention_group.named_user_group.name == SystemGroups.EVERYONE
-        ):
-            continue
-        if sender_is_system_bot:
-            raise JsonableError(
-                _("You are not allowed to mention user group '{user_group_name}'.").format(
-                    user_group_name=group.name
-                )
-            )
-
-        if not user_has_permission_for_group_setting(
-            can_mention_group,
-            sender,
-            NamedUserGroup.GROUP_PERMISSION_SETTINGS["can_mention_group"],
-            direct_member_only=False,
-        ):
+        if not sender_can_mention_group(sender, group):
             raise JsonableError(
                 _("You are not allowed to mention user group '{user_group_name}'.").format(
                     user_group_name=group.name
@@ -1629,6 +1652,7 @@ def visibility_policy_for_send_message(
             user_profile=sender,
             message__recipient_id=message.recipient_id,
             message__subject__iexact=message.topic_name(),
+            message__is_channel_message=True,
         ).exclude(message_id=message.id)
 
     if (

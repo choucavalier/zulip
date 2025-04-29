@@ -176,6 +176,7 @@ def format_release_event(payload: WildValue, include_title: bool = False) -> str
 
 ALL_EVENT_TYPES = [
     "issue_comment",
+    "issue_assigned",
     "issues",
     "create",
     "pull_request",
@@ -249,7 +250,7 @@ def gogs_webhook_main(
             id=payload["pull_request"]["number"].tame(check_int),
             title=payload["pull_request"]["title"].tame(check_string),
         )
-    elif event == "issues":
+    elif event == "issue_assigned":
         body = format_issues_event(
             payload,
             include_title=user_specified_topic is not None,

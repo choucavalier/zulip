@@ -7,7 +7,9 @@ import render_navbar_banners_testing_popover from "../templates/popovers/navbar_
 
 import * as banners from "./banners.ts";
 import type {AlertBanner} from "./banners.ts";
+import type {ActionButton} from "./buttons.ts";
 import * as channel from "./channel.ts";
+import * as demo_organizations_ui from "./demo_organizations_ui.ts";
 import * as desktop_notifications from "./desktop_notifications.ts";
 import * as feedback_widget from "./feedback_widget.ts";
 import {$t, $t_html} from "./i18n.ts";
@@ -170,15 +172,6 @@ export function toggle_organization_profile_incomplete_banner(): void {
         // this is meant to be a one-time task for administrators.
         open_navbar_banner_and_resize(ORGANIZATION_PROFILE_INCOMPLETE_BANNER);
     }
-}
-
-export function get_demo_organization_deadline_days_remaining(): number {
-    const now = Date.now();
-    assert(realm.demo_organization_scheduled_deletion_date !== undefined);
-    const deadline = realm.demo_organization_scheduled_deletion_date * 1000;
-    const day = 24 * 60 * 60 * 1000; // hours * minutes * seconds * milliseconds
-    const days_remaining = Math.round(Math.abs(deadline - now) / day);
-    return days_remaining;
 }
 
 export function should_offer_to_update_timezone(): boolean {
@@ -358,7 +351,24 @@ const bankruptcy_banner = (): AlertBanner => {
 };
 
 const demo_organization_deadline_banner = (): AlertBanner => {
-    const days_remaining = get_demo_organization_deadline_days_remaining();
+    const days_remaining = demo_organizations_ui.get_demo_organization_deadline_days_remaining();
+    let buttons: ActionButton[] = [
+        {
+            attention: "borderless",
+            label: $t({defaultMessage: "Learn more"}),
+            custom_classes: "demo-organizations-help",
+        },
+    ];
+    if (current_user.is_owner) {
+        buttons = [
+            ...buttons,
+            {
+                attention: "quiet",
+                label: $t({defaultMessage: "Convert"}),
+                custom_classes: "convert-demo-organization",
+            },
+        ];
+    }
     return {
         process: "demo-organization-deadline",
         intent: days_remaining <= 7 ? "danger" : "info",
@@ -366,18 +376,14 @@ const demo_organization_deadline_banner = (): AlertBanner => {
             $t_html(
                 {
                     defaultMessage:
-                        "This <z-demo-link>demo organization</z-demo-link> will be automatically deleted in {days_remaining} days, unless it's <z-convert-link>converted into a permanent organization</z-convert-link>.",
+                        "This demo organization will be automatically deleted in {days_remaining} days, unless it's converted into a permanent organization.",
                 },
                 {
-                    "z-demo-link": (content_html) =>
-                        `<a class="banner-link" href="https://zulip.com/help/demo-organizations" target="_blank" rel="noopener noreferrer">${content_html.join("")}</a>`,
-                    "z-convert-link": (content_html) =>
-                        `<a class="banner-link" href="https://zulip.com/help/demo-organizations#convert-a-demo-organization-to-a-permanent-organization" target="_blank" rel="noopener noreferrer">${content_html.join("")}</a>`,
                     days_remaining,
                 },
             ),
         ),
-        buttons: [],
+        buttons,
         close_button: true,
         custom_classes: "navbar-alert-banner",
     };
@@ -498,6 +504,14 @@ export function initialize(): void {
         setTimeout(() => {
             close_navbar_banner_and_resize($banner);
         }, 2000);
+    });
+
+    $("#navbar_alerts_wrapper").on("click", ".convert-demo-organization", () => {
+        demo_organizations_ui.do_convert_demo_organization();
+    });
+
+    $("#navbar_alerts_wrapper").on("click", ".demo-organizations-help", () => {
+        window.open("https://zulip.com/help/demo-organizations", "_blank", "noopener,noreferrer");
     });
 
     $("#navbar_alerts_wrapper").on("click", ".configure-outgoing-mail-instructions", () => {

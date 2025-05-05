@@ -1,5 +1,4 @@
 import $ from "jquery";
-import assert from "minimalistic-assert";
 
 import * as activity_ui from "./activity_ui.ts";
 import * as alert_words from "./alert_words.ts";
@@ -29,9 +28,9 @@ import * as message_edit from "./message_edit.ts";
 import * as message_events from "./message_events.ts";
 import * as message_lists from "./message_lists.ts";
 import * as message_live_update from "./message_live_update.ts";
+import * as message_store from "./message_store.ts";
 import * as message_view from "./message_view.ts";
 import * as muted_users_ui from "./muted_users_ui.ts";
-import * as narrow_state from "./narrow_state.ts";
 import * as narrow_title from "./narrow_title.ts";
 import * as navbar_alerts from "./navbar_alerts.ts";
 import * as onboarding_steps from "./onboarding_steps.ts";
@@ -77,6 +76,8 @@ import * as stream_data from "./stream_data.ts";
 import * as stream_events from "./stream_events.ts";
 import * as stream_list from "./stream_list.ts";
 import * as stream_list_sort from "./stream_list_sort.ts";
+import * as stream_settings_components from "./stream_settings_components.ts";
+import * as stream_settings_data from "./stream_settings_data.ts";
 import * as stream_settings_ui from "./stream_settings_ui.ts";
 import * as stream_topic_history from "./stream_topic_history.ts";
 import * as stream_ui_updates from "./stream_ui_updates.ts";
@@ -215,14 +216,14 @@ export function dispatch_normal_event(event) {
                 allow_message_editing: noop,
                 avatar_changes_disabled: settings_account.update_avatar_change_display,
                 can_access_all_users_group: noop,
-                can_add_custom_emoji_group: noop,
+                can_add_custom_emoji_group: settings_emoji.update_custom_emoji_ui,
                 can_add_subscribers_group: noop,
-                can_create_bots_group: noop,
+                can_create_bots_group: settings_bots.update_bot_permissions_ui,
                 can_create_groups: noop,
                 can_create_private_channel_group: noop,
                 can_create_public_channel_group: noop,
                 can_create_web_public_channel_group: noop,
-                can_create_write_only_bots_group: noop,
+                can_create_write_only_bots_group: settings_bots.update_bot_permissions_ui,
                 can_delete_any_message_group: noop,
                 can_delete_own_message_group: noop,
                 can_invite_users_group: noop,
@@ -332,17 +333,6 @@ export function dispatch_normal_event(event) {
                                     gear_menu.rerender();
                                 }
 
-                                if (key === "can_add_custom_emoji_group") {
-                                    settings_emoji.update_custom_emoji_ui();
-                                }
-
-                                if (
-                                    key === "can_create_bots_group" ||
-                                    key === "can_create_write_only_bots_group"
-                                ) {
-                                    settings_bots.update_bot_permissions_ui();
-                                }
-
                                 if (
                                     key === "can_create_public_channel_group" ||
                                     key === "can_create_private_channel_group" ||
@@ -373,6 +363,20 @@ export function dispatch_normal_event(event) {
 
                                 if (key === "plan_type") {
                                     gear_menu.rerender();
+                                }
+
+                                if (
+                                    key === "can_add_subscribers_group" &&
+                                    overlays.streams_open()
+                                ) {
+                                    const active_stream_id =
+                                        stream_settings_components.get_active_data().id;
+                                    if (active_stream_id !== undefined) {
+                                        const slim_sub = sub_store.get(active_stream_id);
+                                        const sub =
+                                            stream_settings_data.get_sub_for_settings(slim_sub);
+                                        stream_ui_updates.update_add_subscriptions_elements(sub);
+                                    }
                                 }
                             }
                             if (event.data.authentication_methods !== undefined) {
@@ -647,7 +651,6 @@ export function dispatch_normal_event(event) {
                 case "delete":
                     for (const stream_id of event.stream_ids) {
                         const was_subscribed = sub_store.get(stream_id).subscribed;
-                        const is_narrowed_to_stream = narrow_state.narrowed_to_stream_id(stream_id);
                         stream_data.delete_sub(stream_id);
                         stream_settings_ui.remove_stream(stream_id);
                         if (was_subscribed) {
@@ -670,10 +673,10 @@ export function dispatch_normal_event(event) {
                                 "zulip_update_announcements_stream_id",
                             );
                         }
-                        if (is_narrowed_to_stream) {
-                            assert(message_lists.current !== undefined);
-                            message_lists.current.update_trailing_bookend(true);
-                        }
+                        const message_ids = message_store.get_message_ids_in_stream(stream_id);
+                        unread_ops.process_read_messages_event(message_ids);
+                        message_events.remove_messages(message_ids);
+                        stream_topic_history.remove_history_for_stream(stream_id);
                     }
                     stream_list.update_subscribe_to_more_streams_link();
                     break;

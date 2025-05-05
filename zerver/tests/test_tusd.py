@@ -311,12 +311,10 @@ class TusdPreCreateTest(ZulipTestCase):
             email,
             realm_subdomain="ete-slack-import",
             realm_name="Slack import end to end",
-            # TODO: Uncomment after adding support to form.
-            # import_from="slack",
+            import_from="slack",
         )
         prereg_realm = PreregistrationRealm.objects.get(email=email)
-        # TODO: Uncomment after adding support to form.
-        # self.assertEqual(prereg_realm.data_import_metadata["import_from"], "slack")
+        self.assertEqual(prereg_realm.data_import_metadata["import_from"], "slack")
         prereg_realm.data_import_metadata["import_from"] = "slack"
         prereg_realm.save()
 
@@ -392,12 +390,10 @@ class TusdPreCreateTest(ZulipTestCase):
             email,
             realm_subdomain="ete-slack-import",
             realm_name="Slack import end to end",
-            # TODO: Uncomment after adding support to form.
-            # import_from="slack",
+            import_from="slack",
         )
         prereg_realm = PreregistrationRealm.objects.get(email=email)
-        # TODO: Uncomment after adding support to form.
-        # self.assertEqual(prereg_realm.data_import_metadata["import_from"], "slack")
+        self.assertEqual(prereg_realm.data_import_metadata["import_from"], "slack")
         prereg_realm.data_import_metadata["import_from"] = "slack"
         prereg_realm.save()
 
@@ -428,12 +424,10 @@ class TusdPreCreateTest(ZulipTestCase):
             email,
             realm_subdomain="ete-slack-import",
             realm_name="Slack import end to end",
-            # TODO: Uncomment after adding support to form.
-            # import_from="slack",
+            import_from="slack",
         )
         prereg_realm = PreregistrationRealm.objects.get(email=email)
-        # TODO: Uncomment after adding support to form.
-        # self.assertEqual(prereg_realm.data_import_metadata["import_from"], "slack")
+        self.assertEqual(prereg_realm.data_import_metadata["import_from"], "slack")
         prereg_realm.data_import_metadata["import_from"] = "slack"
         prereg_realm.save()
 
@@ -442,6 +436,7 @@ class TusdPreCreateTest(ZulipTestCase):
 
         request = self.request(key=confirmation_key)
 
+        assert settings.MAX_WEB_DATA_IMPORT_SIZE_MB is not None
         max_upload_size = settings.MAX_WEB_DATA_IMPORT_SIZE_MB * 1024 * 1024
         request.event.upload.size = max_upload_size + 1
         result = self.client_post(
@@ -455,7 +450,7 @@ class TusdPreCreateTest(ZulipTestCase):
         self.assertEqual(
             orjson.loads(result_json["HttpResponse"]["Body"]),
             {
-                "message": f"Uploaded file is larger than the allowed limit of {settings.MAX_WEB_DATA_IMPORT_SIZE_MB} MiB"
+                "message": f"Uploaded file exceeds the maximum file size for imports ({settings.MAX_WEB_DATA_IMPORT_SIZE_MB} MiB)."
             },
         )
         self.assertEqual(result_json["RejectUpload"], True)

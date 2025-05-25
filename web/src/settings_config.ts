@@ -66,6 +66,10 @@ export const web_channel_default_view_values = {
         code: 1,
         description: $t({defaultMessage: "Top topic in the channel"}),
     },
+    list_of_topics: {
+        code: 3,
+        description: $t({defaultMessage: "List of topics"}),
+    },
     channel_feed: {
         code: 2,
         description: $t({defaultMessage: "Channel feed"}),
@@ -112,6 +116,21 @@ export const web_animate_image_previews_values = {
     never: {
         code: "never",
         description: $t({defaultMessage: "Only in image viewer"}),
+    },
+};
+
+export const resolved_topic_notice_auto_read_policy_values = {
+    always: {
+        code: "always",
+        description: $t({defaultMessage: "Always"}),
+    },
+    except_followed: {
+        code: "except_followed",
+        description: $t({defaultMessage: "Except in topics I'm following"}),
+    },
+    never: {
+        code: "never",
+        description: $t({defaultMessage: "Never"}),
     },
 };
 

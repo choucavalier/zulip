@@ -217,7 +217,7 @@ export let upload_files = (
     // We implement this transition through triggering a click on the
     // toggle button to take advantage of the existing plumbing for
     // handling the compose and edit UIs.
-    if (config.markdown_preview_hide_button().is(":visible")) {
+    if (config.markdown_preview_hide_button().css("display") !== "none") {
         config.markdown_preview_hide_button().trigger("click");
     }
 
@@ -255,7 +255,7 @@ export let upload_files = (
             true,
         );
         // eslint-disable-next-line @typescript-eslint/no-loop-func
-        config.upload_banner_cancel_button(file_id).one("click", () => {
+        config.upload_banner_cancel_button(file_id).on("click", () => {
             compose_ui.replace_syntax(get_translated_status(file), "", config.textarea());
             compose_ui.autosize_textarea(config.textarea());
             config.textarea().trigger("focus");
@@ -264,7 +264,7 @@ export let upload_files = (
             hide_upload_banner(uppy, config, file_id);
         });
         // eslint-disable-next-line @typescript-eslint/no-loop-func
-        config.upload_banner_hide_button(file_id).one("click", () => {
+        config.upload_banner_hide_button(file_id).on("click", () => {
             hide_upload_banner(uppy, config, file_id);
         });
     }

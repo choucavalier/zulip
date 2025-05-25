@@ -85,10 +85,20 @@ function rerender_ui(): void {
     } else {
         $unmatched_streams_table.css("display", "table-row-group");
     }
-    update_notification_banner();
+    update_desktop_notification_banner();
 }
 
-function update_notification_banner(): void {
+function update_desktop_notification_banner(): void {
+    // As is also noted in `navbar_alerts.ts`, notifications *basically*
+    // don't work on any mobile platforms, so don't event show the banners.
+    // This prevents trying to access things that don't exist, like
+    // `Notification.permission` in a mobile context, in which we'll also
+    // hide the ability to send a test notification before exiting with an
+    // early return.
+    if (util.is_mobile()) {
+        $(".send_test_notification").hide();
+        return;
+    }
     const permission = Notification.permission;
     const $banner_container = $(".desktop-notification-settings-banners");
     if (permission === "granted") {
@@ -252,6 +262,10 @@ export function set_up(settings_panel: SettingsPanel): void {
         settings_object.automatically_follow_topics_policy,
     );
 
+    $container
+        .find(".setting_resolved_topic_notice_auto_read_policy")
+        .val(settings_object.resolved_topic_notice_auto_read_policy);
+
     const $automatically_unmute_topics_in_muted_streams_policy_dropdown = $container.find(
         ".setting_automatically_unmute_topics_in_muted_streams_policy",
     );
@@ -370,9 +384,12 @@ export function set_up(settings_panel: SettingsPanel): void {
 
     $("#settings_content").on("click", ".request-desktop-notifications", (e) => {
         e.preventDefault();
+        // This is only accessed via the notifications banner, so we
+        // do not need to do a mobile check here--as that banner is
+        // not shown in a mobile context anyway.
         void Notification.requestPermission().then((permission) => {
             if (permission === "granted") {
-                update_notification_banner();
+                update_desktop_notification_banner();
             } else if (permission === "denied") {
                 window.open(
                     "/help/desktop-notifications#check-platform-settings",

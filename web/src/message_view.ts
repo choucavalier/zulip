@@ -10,6 +10,7 @@ import * as blueslip from "./blueslip.ts";
 import * as browser_history from "./browser_history.ts";
 import * as channel from "./channel.ts";
 import * as compose_actions from "./compose_actions.ts";
+import type {NarrowActivateOpts} from "./compose_actions.ts";
 import * as compose_banner from "./compose_banner.ts";
 import * as compose_closed_ui from "./compose_closed_ui.ts";
 import * as compose_notifications from "./compose_notifications.ts";
@@ -258,10 +259,7 @@ function create_and_update_message_list(
 function handle_post_message_list_change(
     id_info: TargetMessageIdInfo,
     msg_list: MessageList,
-    opts: {
-        change_hash: boolean;
-        show_more_topics: boolean;
-    } & ShowMessageViewOpts,
+    opts: NarrowActivateOpts,
     select_immediately: boolean,
     select_opts: SelectIdOpts,
     then_select_offset: number | undefined,
@@ -295,6 +293,14 @@ export function try_rendering_locally_for_same_narrow(
     filter: Filter,
     opts: ShowMessageViewOpts,
 ): boolean {
+    if (!narrow_state.is_message_feed_visible()) {
+        // This function only works when the message feed is visible.
+        //
+        // TODO: Ideally, excluding the inbox-style channels view from
+        // this code path should be further up the call chain.
+        return false;
+    }
+
     const current_filter = narrow_state.filter();
     let target_scroll_offset;
     if (!current_filter) {
@@ -1457,7 +1463,7 @@ export function to_compose_target(): void {
     }
 
     if (compose_state.get_message_type() === "private") {
-        const recipient_string = compose_state.private_message_recipient();
+        const recipient_string = compose_state.private_message_recipient_emails();
         const emails = util.extract_pm_recipients(recipient_string);
         const invalid = emails.filter((email) => !people.is_valid_email_for_compose(email));
         // If there are no recipients or any recipient is
@@ -1503,7 +1509,8 @@ function handle_post_view_change(
     left_sidebar_navigation_area.handle_narrow_activated(filter);
     stream_list.handle_narrow_activated(filter, opts.change_hash, opts.show_more_topics);
     pm_list.handle_narrow_activated(filter);
-    activity_ui.build_user_sidebar();
+    // This also builds the user sidebar.
+    activity_ui.clear_search();
 }
 
 export function rerender_combined_feed(combined_feed_msg_list: MessageList): void {

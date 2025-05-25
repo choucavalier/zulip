@@ -665,7 +665,7 @@ function format_conversation(conversation_data: ConversationData): ConversationC
         const stream_id = last_msg.stream_id;
         const stream_name = stream_data.get_stream_name_from_id(last_msg.stream_id);
         const stream_color = stream_info.color;
-        const stream_url = hash_util.by_stream_url(stream_id);
+        const stream_url = hash_util.channel_url_by_user_setting(stream_id);
         const invite_only = stream_info.invite_only;
         const is_web_public = stream_info.is_web_public;
         const is_archived = stream_info.is_archived;
@@ -808,11 +808,11 @@ export function process_topic_edit(
     // logic behind this and important notes on use of this function.
     recent_view_data.conversations.delete(recent_view_util.get_topic_key(old_stream_id, old_topic));
 
-    const old_topic_msgs = message_util.get_messages_in_topic(old_stream_id, old_topic);
+    const old_topic_msgs = message_util.get_loaded_messages_in_topic(old_stream_id, old_topic);
     process_messages(old_topic_msgs);
 
     new_stream_id = new_stream_id || old_stream_id;
-    const new_topic_msgs = message_util.get_messages_in_topic(new_stream_id, new_topic);
+    const new_topic_msgs = message_util.get_loaded_messages_in_topic(new_stream_id, new_topic);
     process_messages(new_topic_msgs);
 }
 
@@ -834,7 +834,7 @@ export function update_topics_of_deleted_message_ids(message_ids: number[]): voi
     const msgs_to_process = [];
     for (const [stream_id, topic] of topics_to_rerender.values()) {
         recent_view_data.conversations.delete(recent_view_util.get_topic_key(stream_id, topic));
-        const msgs = message_util.get_messages_in_topic(stream_id, topic);
+        const msgs = message_util.get_loaded_messages_in_topic(stream_id, topic);
         msgs_to_process.push(...msgs);
     }
 
@@ -1427,7 +1427,11 @@ export function show(): void {
     // is a reliable solution to check if recent view was displayed earlier.
     const reattach_event_handlers = topics_widget !== undefined;
     views_util.show({
-        highlight_view_in_left_sidebar: left_sidebar_navigation_area.highlight_recent_view,
+        highlight_view_in_left_sidebar() {
+            views_util.handle_message_view_deactivated(
+                left_sidebar_navigation_area.highlight_recent_view,
+            );
+        },
         $view: $("#recent_view"),
         // We want to show `new stream message` instead of
         // `new topic`, which we are already doing in this

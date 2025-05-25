@@ -967,6 +967,9 @@ LOGGING: dict[str, Any] = {
             "handlers": ["scim_file", "errors_file"],
             "propagate": False,
         },
+        "mail.log": {
+            "level": "WARNING",
+        },
         "pyvips": {
             "level": "ERROR",
             "handlers": ["console", "errors_file"],
@@ -1304,3 +1307,5 @@ SCIM_SERVICE_PROVIDER = {
 
 # Which API key to use will be determined based on TOPIC_SUMMARIZATION_MODEL.
 TOPIC_SUMMARIZATION_API_KEY = get_secret("topic_summarization_api_key", None)
+
+PARTIAL_USERS = bool(os.environ.get("PARTIAL_USERS"))

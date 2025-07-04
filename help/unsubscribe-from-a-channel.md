@@ -12,11 +12,13 @@ You can always unsubscribe from any channel in Zulip.
 
 {tab|mobile}
 
-{!channel-long-press-menu.md!}
+Access this feature by following the web app instructions in your
+mobile device browser.
 
-1. Tap **Unsubscribe**.
-
-{!channel-long-press-menu-tip.md!}
+Implementation of this feature in the mobile app is tracked [on
+GitHub](https://github.com/zulip/zulip-flutter/issues/1224). If
+you're interested in this feature, please react to the issue's
+description with 👍.
 
 {end_tabs}
 
@@ -33,19 +35,6 @@ You can always unsubscribe from any channel in Zulip.
 1. Click the **checkmark**
    (<img src="/static/images/help/desktop-web-check-icon.svg" alt="checkmark" class="help-center-icon"/>)
    icon to the left of a channel to unsubscribe from it.
-
-{tab|mobile}
-
-{!mobile-all-channels-view.md!}
-
-1. Tap the **checkmark**
-   (<img src="/static/images/help/mobile-check-icon.svg" alt="checkmark" class="help-center-icon"/>)
-   icon to the right of a channel to unsubscribe from it.
-
-!!! tip ""
-
-    You can also press and hold a channel until the long-press menu appears, and
-    tap **Unsubscribe**.
 
 {end_tabs}
 
@@ -65,16 +54,6 @@ You can always unsubscribe from any channel in Zulip.
 
     You can also use <kbd>Shift</kbd> + <kbd>S</kbd> to unsubscribe from the
     selected channel.
-
-{tab|mobile}
-
-{!channel-long-press-menu.md!}
-
-1. Tap **Channel settings**.
-
-1. Tap **Unsubscribe**.
-
-{!mobile-channel-settings-menu-tip.md!}
 
 {end_tabs}
 

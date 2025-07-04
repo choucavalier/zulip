@@ -1,4 +1,5 @@
 import re
+from datetime import datetime, timezone
 from typing import Protocol
 
 from django.http import HttpRequest, HttpResponse
@@ -35,6 +36,10 @@ TOPIC_WITH_DESIGN_INFO_TEMPLATE = "{repo} / {type} {design_name}"
 DESIGN_COMMENT_MESSAGE_TEMPLATE = (
     "{user_name} {action} on design [{design_name}]({design_url}):\n{content_message}"
 )
+
+FEATURE_FLAG_MESSAGE_TEMPLATE = "{user} {action} the feature flag [{name}]({url})."
+
+ACCESS_TOKEN_EXPIRY_MESSAGE_TEMPLATE = "The access token [{name}]({url}) will expire on {date}."
 
 
 def fixture_to_headers(fixture_name: str) -> dict[str, str]:
@@ -408,6 +413,71 @@ def get_release_event_body(payload: WildValue, include_title: bool) -> str:
     return body
 
 
+def get_feature_flag_event_body(payload: WildValue, include_title: bool) -> str:
+    repo_url = payload["project"]["web_url"].tame(check_string)
+    feature_flag = payload["object_attributes"]
+    action = "activated" if feature_flag["active"] else "deactivated"
+
+    return FEATURE_FLAG_MESSAGE_TEMPLATE.format(
+        user=payload["user"]["username"].tame(check_string),
+        action=action,
+        name=feature_flag["name"].tame(check_string),
+        url=f"{repo_url}/-/feature_flags",
+    )
+
+
+def get_access_token_page_url(payload: WildValue) -> str:
+    """
+    Generate the URL for the access tokens based on whether it's
+    for a group or a project.
+    """
+    if "group" in payload:
+        group_path = payload["group"]["group_path"].tame(check_string)
+        return f"https://gitlab.com/groups/{group_path}/-/settings/access_tokens"
+
+    project_url = payload["project"]["web_url"].tame(check_string)
+    return f"{project_url}/-/settings/access_tokens"
+
+
+def get_resource_access_token_expiry_event_body(payload: WildValue, include_title: bool) -> str:
+    access_token = payload["object_attributes"]
+    expiry_date = access_token["expires_at"].tame(check_string)
+    formatted_date = (
+        datetime.strptime(expiry_date, "%Y-%m-%d")
+        .replace(tzinfo=timezone.utc)
+        .strftime("%b %d, %Y")
+    )
+
+    return ACCESS_TOKEN_EXPIRY_MESSAGE_TEMPLATE.format(
+        name=access_token["name"].tame(check_string),
+        url=get_access_token_page_url(payload),
+        date=formatted_date,
+    )
+
+
+def get_deployment_event_body(payload: WildValue, include_title: bool) -> str:
+    user_text = (
+        f"[{payload['user']['name'].tame(check_string)}]({payload['user_url'].tame(check_string)})"
+    )
+
+    deployment_status = payload["status"].tame(check_string)
+    deployable_url = payload.get("deployable_url", "").tame(check_string)
+    deployment_text = f"[deployment]({deployable_url})" if deployable_url else "deployment"
+
+    commit_title = payload["commit_title"].tame(check_string)
+    commit_url = payload["commit_url"].tame(check_string)
+    commit_sha = commit_url.split("/")[-1][:7]
+
+    deployment_event_body_map = {
+        "running": f"{user_text} started a new {deployment_text}:\n> [{commit_sha}]({commit_url}) {commit_title}",
+        "success": f"The {deployment_text} was successful.",
+        "failed": f"The {deployment_text} failed.",
+        "canceled": f"The {deployment_text} was canceled.",
+    }
+
+    return deployment_event_body_map[deployment_status]
+
+
 def get_repo_name(payload: WildValue) -> str:
     if "project" in payload:
         return payload["project"]["name"].tame(check_string)
@@ -495,6 +565,9 @@ EVENT_FUNCTION_MAPPER: dict[str, EventFunction] = {
     "Build Hook": get_build_hook_event_body,
     "Pipeline Hook": get_pipeline_event_body,
     "Release Hook": get_release_event_body,
+    "Feature Flag Hook": get_feature_flag_event_body,
+    "Resource Access Token Hook": get_resource_access_token_expiry_event_body,
+    "Deployment Hook": get_deployment_event_body,
 }
 
 ALL_EVENT_TYPES = list(EVENT_FUNCTION_MAPPER.keys())
@@ -602,6 +675,14 @@ def get_topic_based_on_event(event: str, payload: WildValue, use_merge_request_t
             type="snippet",
             id=payload["snippet"]["id"].tame(check_int),
             title=payload["snippet"]["title"].tame(check_string),
+        )
+
+    elif event == "Resource Access Token Hook" and payload.get("group"):
+        return payload["group"]["group_name"].tame(check_string)
+    elif event == "Deployment Hook":
+        return "{} / {}".format(
+            get_repo_name(payload),
+            payload["environment"].tame(check_string),
         )
     return get_repo_name(payload)
 

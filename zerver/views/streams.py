@@ -11,6 +11,7 @@ from django.http import HttpRequest, HttpResponse
 from django.utils.translation import gettext as _
 from django.utils.translation import override as override_language
 from pydantic import BaseModel, Field, Json, NonNegativeInt, StringConstraints, model_validator
+from pydantic.functional_validators import AfterValidator
 from pydantic_partials.sentinels import Missing, MissingType
 
 from zerver.actions.default_streams import (
@@ -40,6 +41,7 @@ from zerver.actions.streams import (
     do_change_subscription_property,
     do_deactivate_stream,
     do_rename_stream,
+    do_set_stream_property,
     do_unarchive_stream,
     get_subscriber_ids,
 )
@@ -90,7 +92,7 @@ from zerver.lib.topic import (
 )
 from zerver.lib.topic_link_util import get_stream_link_syntax
 from zerver.lib.typed_endpoint import ApiParamConfig, PathOnly, typed_endpoint
-from zerver.lib.typed_endpoint_validators import check_color
+from zerver.lib.typed_endpoint_validators import check_color, parse_enum_from_string_value
 from zerver.lib.types import UserGroupMembersData
 from zerver.lib.user_groups import (
     GroupSettingChangeRequest,
@@ -108,6 +110,7 @@ from zerver.lib.users import access_bot_by_id, bulk_access_users_by_email, bulk_
 from zerver.lib.utils import assert_is_not_none
 from zerver.models import ChannelFolder, Realm, Stream, UserMessage, UserProfile, UserTopic
 from zerver.models.groups import SystemGroups
+from zerver.models.streams import StreamTopicsPolicyEnum
 from zerver.models.users import get_system_bot
 
 
@@ -177,8 +180,8 @@ def create_default_stream_group(
     request: HttpRequest,
     user_profile: UserProfile,
     *,
-    group_name: str,
     description: str,
+    group_name: str,
     stream_names: Json[list[str]],
 ) -> HttpResponse:
     streams = []
@@ -196,8 +199,8 @@ def update_default_stream_group_info(
     user_profile: UserProfile,
     *,
     group_id: PathOnly[int],
-    new_group_name: str | None = None,
     new_description: str | None = None,
+    new_group_name: str | None = None,
 ) -> HttpResponse:
     if not new_group_name and not new_description:
         raise JsonableError(_('You must pass "new_description" or "new_group_name".'))
@@ -264,22 +267,34 @@ def update_stream_backend(
     request: HttpRequest,
     user_profile: UserProfile,
     *,
-    stream_id: PathOnly[int],
-    description: Annotated[str, StringConstraints(max_length=Stream.MAX_DESCRIPTION_LENGTH)]
-    | None = None,
-    is_private: Json[bool] | None = None,
-    is_default_stream: Json[bool] | None = None,
-    history_public_to_subscribers: Json[bool] | None = None,
-    is_web_public: Json[bool] | None = None,
-    new_name: str | None = None,
-    message_retention_days: Json[str] | Json[int] | None = None,
-    is_archived: Json[bool] | None = None,
     can_add_subscribers_group: Json[GroupSettingChangeRequest] | None = None,
     can_administer_channel_group: Json[GroupSettingChangeRequest] | None = None,
-    can_send_message_group: Json[GroupSettingChangeRequest] | None = None,
+    can_move_messages_out_of_channel_group: Json[GroupSettingChangeRequest] | None = None,
+    can_move_messages_within_channel_group: Json[GroupSettingChangeRequest] | None = None,
     can_remove_subscribers_group: Json[GroupSettingChangeRequest] | None = None,
+    can_send_message_group: Json[GroupSettingChangeRequest] | None = None,
     can_subscribe_group: Json[GroupSettingChangeRequest] | None = None,
+    description: Annotated[str, StringConstraints(max_length=Stream.MAX_DESCRIPTION_LENGTH)]
+    | None = None,
     folder_id: Json[int | None] | MissingType = Missing,
+    history_public_to_subscribers: Json[bool] | None = None,
+    is_archived: Json[bool] | None = None,
+    is_default_stream: Json[bool] | None = None,
+    is_private: Json[bool] | None = None,
+    is_web_public: Json[bool] | None = None,
+    message_retention_days: Json[str] | Json[int] | None = None,
+    new_name: str | None = None,
+    stream_id: PathOnly[int],
+    topics_policy: Annotated[
+        str | None,
+        AfterValidator(
+            lambda val: parse_enum_from_string_value(
+                val,
+                "topics_policy",
+                StreamTopicsPolicyEnum,
+            )
+        ),
+    ] = None,
 ) -> HttpResponse:
     # Most settings updates only require metadata access, not content
     # access. We will check for content access further when and where
@@ -405,6 +420,12 @@ def update_stream_backend(
     if is_archived is not None and not is_archived:
         do_unarchive_stream(stream, stream.name, acting_user=None)
 
+    if topics_policy is not None and isinstance(topics_policy, StreamTopicsPolicyEnum):
+        if not user_profile.can_set_topics_policy():
+            raise JsonableError(_("Insufficient permission"))
+
+        do_set_stream_property(stream, "topics_policy", topics_policy.value, user_profile)
+
     if description is not None:
         if "\n" in description:
             # We don't allow newline characters in stream descriptions.
@@ -420,8 +441,7 @@ def update_stream_backend(
             check_stream_name_available(user_profile.realm, new_name)
         do_rename_stream(stream, new_name, user_profile)
 
-    if folder_id is not Missing:
-        assert not isinstance(folder_id, MissingType)
+    if not isinstance(folder_id, MissingType):
         folder: ChannelFolder | None = None
         if folder_id is not None:
             folder = get_channel_folder_by_id(folder_id, user_profile.realm)
@@ -511,8 +531,8 @@ def update_subscriptions_backend(
     request: HttpRequest,
     user_profile: UserProfile,
     *,
-    delete: Json[list[str]] | None = None,
     add: Json[list[AddSubscriptionData]] | None = None,
+    delete: Json[list[str]] | None = None,
 ) -> HttpResponse:
     if delete is None:
         delete = []
@@ -552,8 +572,8 @@ def remove_subscriptions_backend(
     request: HttpRequest,
     user_profile: UserProfile,
     *,
-    streams_raw: Annotated[Json[list[str]], ApiParamConfig("subscriptions")],
     principals: Json[list[str] | list[int]] | None = None,
+    streams_raw: Annotated[Json[list[str]], ApiParamConfig("subscriptions")],
 ) -> HttpResponse:
     realm = user_profile.realm
 
@@ -621,21 +641,36 @@ def add_subscriptions_backend(
     request: HttpRequest,
     user_profile: UserProfile,
     *,
-    streams_raw: Annotated[Json[list[AddSubscriptionData]], ApiParamConfig("subscriptions")],
-    invite_only: Json[bool] = False,
-    is_web_public: Json[bool] = False,
-    is_default_stream: Json[bool] = False,
-    history_public_to_subscribers: Json[bool] | None = None,
-    message_retention_days: Json[str] | Json[int] = RETENTION_DEFAULT,
+    announce: Json[bool] = False,
+    authorization_errors_fatal: Json[bool] = True,
     can_add_subscribers_group: Json[int | UserGroupMembersData] | None = None,
     can_administer_channel_group: Json[int | UserGroupMembersData] | None = None,
-    can_send_message_group: Json[int | UserGroupMembersData] | None = None,
+    can_move_messages_out_of_channel_group: Json[int | UserGroupMembersData] | None = None,
+    can_move_messages_within_channel_group: Json[int | UserGroupMembersData] | None = None,
     can_remove_subscribers_group: Json[int | UserGroupMembersData] | None = None,
+    can_send_message_group: Json[int | UserGroupMembersData] | None = None,
     can_subscribe_group: Json[int | UserGroupMembersData] | None = None,
-    announce: Json[bool] = False,
-    principals: Json[list[str] | list[int]] | None = None,
-    authorization_errors_fatal: Json[bool] = True,
     folder_id: Json[int] | None = None,
+    history_public_to_subscribers: Json[bool] | None = None,
+    invite_only: Json[bool] = False,
+    is_default_stream: Json[bool] = False,
+    is_web_public: Json[bool] = False,
+    message_retention_days: Json[str] | Json[int] = RETENTION_DEFAULT,
+    principals: Json[list[str] | list[int]] | None = None,
+    send_new_subscription_messages: Json[bool] = True,
+    streams_raw: Annotated[Json[list[AddSubscriptionData]], ApiParamConfig("subscriptions")],
+    topics_policy: Json[
+        Annotated[
+            str | None,
+            AfterValidator(
+                lambda val: parse_enum_from_string_value(
+                    val,
+                    "topics_policy",
+                    StreamTopicsPolicyEnum,
+                )
+            ),
+        ]
+    ] = None,
 ) -> HttpResponse:
     realm = user_profile.realm
     stream_dicts = []
@@ -703,11 +738,24 @@ def add_subscriptions_backend(
         stream_dict_copy["message_retention_days"] = parse_message_retention_days(
             message_retention_days, Stream.MESSAGE_RETENTION_SPECIAL_VALUES_MAP
         )
+        if topics_policy is not None and isinstance(topics_policy, StreamTopicsPolicyEnum):
+            if (
+                topics_policy != StreamTopicsPolicyEnum.inherit
+                and not user_profile.can_set_topics_policy()
+            ):
+                raise JsonableError(_("Insufficient permission"))
+            stream_dict_copy["topics_policy"] = topics_policy.value
         stream_dict_copy["can_add_subscribers_group"] = group_settings_map[
             "can_add_subscribers_group"
         ]
         stream_dict_copy["can_administer_channel_group"] = group_settings_map[
             "can_administer_channel_group"
+        ]
+        stream_dict_copy["can_move_messages_out_of_channel_group"] = group_settings_map[
+            "can_move_messages_out_of_channel_group"
+        ]
+        stream_dict_copy["can_move_messages_within_channel_group"] = group_settings_map[
+            "can_move_messages_within_channel_group"
         ]
         stream_dict_copy["can_send_message_group"] = group_settings_map["can_send_message_group"]
         stream_dict_copy["can_remove_subscribers_group"] = group_settings_map[
@@ -796,14 +844,19 @@ def add_subscriptions_backend(
     result["subscribed"] = dict(result["subscribed"])
     result["already_subscribed"] = dict(result["already_subscribed"])
 
-    send_messages_for_new_subscribers(
-        user_profile=user_profile,
-        subscribers=subscribers,
-        new_subscriptions=result["subscribed"],
-        id_to_user_profile=id_to_user_profile,
-        created_streams=created_streams,
-        announce=announce,
-    )
+    if send_new_subscription_messages:
+        if len(result["subscribed"]) <= settings.MAX_BULK_NEW_SUBSCRIPTION_MESSAGES:
+            send_messages_for_new_subscribers(
+                user_profile=user_profile,
+                subscribers=subscribers,
+                new_subscriptions=result["subscribed"],
+                id_to_user_profile=id_to_user_profile,
+                created_streams=created_streams,
+                announce=announce,
+            )
+            result["new_subscription_messages_sent"] = True
+        else:
+            result["new_subscription_messages_sent"] = False
 
     result["subscribed"] = dict(result["subscribed"])
     result["already_subscribed"] = dict(result["already_subscribed"])
@@ -841,10 +894,10 @@ def send_messages_for_new_subscribers(
     if new_subscriptions:
         for id, subscribed_stream_names in new_subscriptions.items():
             if id == str(user_profile.id):
-                # Don't send a Zulip if you invited yourself.
+                # Don't send a notification DM if you subscribed yourself.
                 continue
             if bots[id]:
-                # Don't send invitation Zulips to bots
+                # Don't send notification DMs to bots.
                 continue
 
             # For each user, we notify them about newly subscribed streams, except for
@@ -979,15 +1032,15 @@ def get_streams_backend(
     request: HttpRequest,
     user_profile: UserProfile,
     *,
-    include_public: Json[bool] = True,
-    include_web_public: Json[bool] = False,
-    include_subscribed: Json[bool] = True,
     exclude_archived: Json[bool] = True,
     include_all: Json[bool] = False,
     include_all_active: Json[bool] = False,
+    include_can_access_content: Json[bool] = False,
     include_default: Json[bool] = False,
     include_owner_subscribed: Json[bool] = False,
-    include_can_access_content: Json[bool] = False,
+    include_public: Json[bool] = True,
+    include_subscribed: Json[bool] = True,
+    include_web_public: Json[bool] = False,
 ) -> HttpResponse:
     if include_all_active is True:
         include_all = True
@@ -1027,8 +1080,8 @@ def get_topics_backend(
     request: HttpRequest,
     maybe_user_profile: UserProfile | AnonymousUser,
     *,
-    stream_id: PathOnly[NonNegativeInt],
     allow_empty_topic_name: Json[bool] = False,
+    stream_id: PathOnly[NonNegativeInt],
 ) -> HttpResponse:
     if not maybe_user_profile.is_authenticated:
         is_web_public_query = True
@@ -1183,8 +1236,8 @@ def update_subscriptions_property(
     request: HttpRequest,
     user_profile: UserProfile,
     *,
-    stream_id: PathOnly[Json[int]],
     property: str,
+    stream_id: PathOnly[Json[int]],
     value: Annotated[Json[bool] | str, Field(union_mode="left_to_right")],
 ) -> HttpResponse:
     change_request = SubscriptionPropertyChangeRequest(
@@ -1236,8 +1289,8 @@ def get_stream_email_address(
     request: HttpRequest,
     user_profile: UserProfile,
     *,
-    stream_id: Annotated[NonNegativeInt, ApiParamConfig("stream", path_only=True)],
     sender_id: Json[NonNegativeInt] | None = None,
+    stream_id: Annotated[NonNegativeInt, ApiParamConfig("stream", path_only=True)],
 ) -> HttpResponse:
     (stream, sub) = access_stream_by_id(
         user_profile,

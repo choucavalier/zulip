@@ -8,12 +8,15 @@ import render_compose_banner from "../templates/compose_banner/compose_banner.hb
 
 import * as blueslip from "./blueslip.ts";
 import * as buttons from "./buttons.ts";
+import * as channel_folders from "./channel_folders.ts";
 import * as compose_banner from "./compose_banner.ts";
 import type {DropdownWidget} from "./dropdown_widget.ts";
+import * as dropdown_widget from "./dropdown_widget.ts";
 import * as group_permission_settings from "./group_permission_settings.ts";
 import type {AssignedGroupPermission, GroupGroupSettingName} from "./group_permission_settings.ts";
 import * as group_setting_pill from "./group_setting_pill.ts";
 import {$t} from "./i18n.ts";
+import {page_params} from "./page_params.ts";
 import * as people from "./people.ts";
 import {
     realm_default_settings_schema,
@@ -240,6 +243,7 @@ export function get_subsection_property_elements($subsection: JQuery): HTMLEleme
 export const simple_dropdown_realm_settings_schema = realm_schema.pick({
     realm_org_type: true,
     realm_message_edit_history_visibility_policy: true,
+    realm_topics_policy: true,
 });
 export type SimpleDropdownRealmSettings = z.infer<typeof simple_dropdown_realm_settings_schema>;
 
@@ -301,6 +305,19 @@ function get_jitsi_server_url_setting_value(
     return JSON.stringify($custom_input_elem.val());
 }
 
+export function update_custom_time_limit_minute_text($input: JQuery<HTMLInputElement>): void {
+    const $minutes_text = $input.parent().find(".time-unit-text");
+    const count = Number.parseInt($input.val()!, 10);
+    $minutes_text.text(
+        $t(
+            {
+                defaultMessage: "{count, plural, one {minute} other {minutes}}",
+            },
+            {count},
+        ),
+    );
+}
+
 export function update_custom_value_input(property_name: MessageTimeLimitSetting): void {
     const $dropdown_elem = $(`#id_${CSS.escape(property_name)}`);
     const custom_input_elem_id = $dropdown_elem
@@ -310,11 +327,11 @@ export function update_custom_value_input(property_name: MessageTimeLimitSetting
 
     const show_custom_limit_input = $dropdown_elem.val() === "custom_period";
     change_element_block_display_property(custom_input_elem_id, show_custom_limit_input);
-    if (show_custom_limit_input) {
-        $(`#${CSS.escape(custom_input_elem_id)}`).val(
-            get_realm_time_limits_in_minutes(property_name),
-        );
+    if (!show_custom_limit_input) {
+        return;
     }
+    $(`#${CSS.escape(custom_input_elem_id)}`).val(get_realm_time_limits_in_minutes(property_name));
+    update_custom_time_limit_minute_text($(`#${CSS.escape(custom_input_elem_id)}`));
 }
 
 export function get_time_limit_dropdown_setting_value(
@@ -476,6 +493,7 @@ const dropdown_widget_map = new Map<string, DropdownWidget | null>([
     ["realm_default_code_block_language", null],
     ["realm_can_access_all_users_group", null],
     ["realm_can_create_web_public_channel_group", null],
+    ["folder_id", null],
 ]);
 
 export function get_widget_for_dropdown_list_settings(
@@ -837,6 +855,7 @@ export function check_realm_settings_property_changed(elem: HTMLElement): boolea
         case "realm_can_move_messages_between_channels_group":
         case "realm_can_move_messages_between_topics_group":
         case "realm_can_resolve_topics_group":
+        case "realm_can_set_topics_policy_group":
         case "realm_can_summarize_topics_group":
         case "realm_create_multiuse_invite_group":
         case "realm_direct_message_initiator_group":
@@ -901,6 +920,9 @@ export function check_stream_settings_property_changed(
             break;
         case "stream_privacy":
             proposed_val = get_input_element_value(elem, "radio-group");
+            break;
+        case "folder_id":
+            proposed_val = get_channel_folder_value_from_dropdown_widget($(elem));
             break;
         default:
             if (current_val !== undefined) {
@@ -1096,6 +1118,7 @@ export function populate_data_for_realm_settings_request(
                     "can_move_messages_between_channels_group",
                     "can_move_messages_between_topics_group",
                     "can_resolve_topics_group",
+                    "can_set_topics_policy_group",
                     "can_summarize_topics_group",
                     "create_multiuse_invite_group",
                     "direct_message_initiator_group",
@@ -1151,6 +1174,12 @@ export function populate_data_for_stream_settings_request(
                         new: input_value,
                         old: old_value,
                     });
+                    continue;
+                }
+
+                if (property_name === "folder_id") {
+                    const folder_id = get_channel_folder_value_from_dropdown_widget($input_elem);
+                    data[property_name] = JSON.stringify(folder_id);
                     continue;
                 }
 
@@ -1546,6 +1575,8 @@ export const group_setting_widget_map = new Map<string, GroupSettingPillContaine
     ["can_leave_group", null],
     ["can_manage_group", null],
     ["can_mention_group", null],
+    ["can_move_messages_out_of_channel_group", null],
+    ["can_move_messages_within_channel_group", null],
     ["can_remove_members_group", null],
     ["can_remove_subscribers_group", null],
     ["can_send_message_group", null],
@@ -1565,6 +1596,7 @@ export const group_setting_widget_map = new Map<string, GroupSettingPillContaine
     ["realm_can_move_messages_between_channels_group", null],
     ["realm_can_move_messages_between_topics_group", null],
     ["realm_can_resolve_topics_group", null],
+    ["realm_can_set_topics_policy_group", null],
     ["realm_can_summarize_topics_group", null],
     ["realm_create_multiuse_invite_group", null],
     ["realm_direct_message_initiator_group", null],
@@ -1939,4 +1971,86 @@ export function get_group_assigned_user_group_permissions(group: UserGroup): {
     }
 
     return group_assigned_user_group_permissions;
+}
+
+export function set_up_folder_dropdown_widget(
+    sub?: StreamSubscription,
+): DropdownWidget | undefined {
+    if (!page_params.development_environment) {
+        return undefined;
+    }
+
+    const folder_options = (): dropdown_widget.Option[] => {
+        const folders = channel_folders.get_channel_folders();
+        const options: dropdown_widget.Option[] = folders.map((folder) => ({
+            name: folder.name,
+            unique_id: folder.id,
+        }));
+
+        const disabled_option = {
+            is_setting_disabled: true,
+            show_disabled_icon: false,
+            show_disabled_option_name: true,
+            unique_id: settings_config.no_folder_selected,
+            name: $t({defaultMessage: "None"}),
+        };
+
+        options.unshift(disabled_option);
+        return options;
+    };
+
+    const default_id = sub?.folder_id ?? settings_config.no_folder_selected;
+
+    let widget_name = "folder_id";
+    if (sub === undefined) {
+        widget_name = "new_channel_folder_id";
+    }
+
+    let $events_container = $("#stream_settings .subscription_settings");
+    if (sub === undefined) {
+        $events_container = $("#stream_creation_form");
+    }
+
+    const folder_widget = new dropdown_widget.DropdownWidget({
+        widget_name,
+        get_options: folder_options,
+        $events_container,
+        item_click_callback(event, dropdown, this_widget) {
+            dropdown.hide();
+            event.preventDefault();
+            event.stopPropagation();
+            this_widget.render();
+            if (sub !== undefined) {
+                const $edit_container = stream_settings_containers.get_edit_container(sub);
+                save_discard_stream_settings_widget_status_handler(
+                    $edit_container.find(".channel-folder-subsection"),
+                    stream_data.get_sub_by_id(sub.stream_id),
+                );
+            }
+        },
+        default_id,
+        unique_id_type: "number",
+    });
+    if (sub !== undefined) {
+        set_dropdown_setting_widget("folder_id", folder_widget);
+    }
+    folder_widget.setup();
+    return folder_widget;
+}
+
+export function set_channel_folder_dropdown_value(sub: StreamSubscription): void {
+    if (sub.folder_id === null) {
+        set_dropdown_list_widget_setting_value("folder_id", settings_config.no_folder_selected);
+        return;
+    }
+    set_dropdown_list_widget_setting_value("folder_id", sub.folder_id);
+}
+
+export function get_channel_folder_value_from_dropdown_widget($elem: JQuery): number | null {
+    const value = get_dropdown_list_widget_setting_value($elem);
+    assert(typeof value === "number");
+    if (value === settings_config.no_folder_selected) {
+        return null;
+    }
+    return value;
 }

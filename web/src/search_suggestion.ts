@@ -11,7 +11,7 @@ import * as narrow_state from "./narrow_state.ts";
 import {page_params} from "./page_params.ts";
 import * as people from "./people.ts";
 import type {User} from "./people.ts";
-import {type NarrowTerm, current_user} from "./state_data.ts";
+import {type NarrowTerm} from "./state_data.ts";
 import * as stream_data from "./stream_data.ts";
 import * as stream_topic_history from "./stream_topic_history.ts";
 import * as stream_topic_history_util from "./stream_topic_history_util.ts";
@@ -20,7 +20,7 @@ import * as util from "./util.ts";
 
 export type UserPillItem = {
     id: number;
-    display_value: Handlebars.SafeString;
+    display_value: string;
     has_image: boolean;
     img_src: string;
     should_add_guest_user_indicator: boolean;
@@ -43,29 +43,21 @@ export type Suggestion = {
       }
 );
 
-export const max_num_of_search_results = MAX_ITEMS;
+export let max_num_of_search_results = MAX_ITEMS;
+export function rewire_max_num_of_search_results(value: typeof max_num_of_search_results): void {
+    max_num_of_search_results = value;
+}
 
 function channel_matches_query(channel_name: string, q: string): boolean {
     return common.phrase_match(q, channel_name);
 }
 
-function make_person_highlighter(query: string): (person: User) => string {
-    const highlight_query = typeahead_helper.make_query_highlighter(query);
-
-    return function (person: User): string {
-        return highlight_query(person.full_name);
-    };
-}
-
-function highlight_person(person: User, highlighter: (person: User) => string): UserPillItem {
-    const avatar_url = people.small_avatar_url_for_person(person);
-    const highlighted_name = highlighter(person);
-
+function user_pill_item(person: User): UserPillItem {
     return {
         id: person.user_id,
-        display_value: new Handlebars.SafeString(highlighted_name),
+        display_value: person.full_name,
         has_image: true,
-        img_src: avatar_url,
+        img_src: people.small_avatar_url_for_person(person),
         should_add_guest_user_indicator: people.should_add_guest_user_indicator(person.user_id),
     };
 }
@@ -164,14 +156,11 @@ function get_channel_suggestions(last: NarrowTerm, terms: NarrowTerm[]): Suggest
 
     channels = typeahead_helper.sorter(query, channels, (x) => x);
 
-    const regex = typeahead_helper.build_highlight_regex(query);
-    const highlight_query = typeahead_helper.highlight_with_escaping_and_regex;
-
     return channels.map((channel_name) => {
         const prefix = "channel";
-        const highlighted_channel = highlight_query(regex, channel_name);
         const verb = last.negated ? "exclude " : "";
-        const description_html = verb + prefix + " " + highlighted_channel;
+        const description_html =
+            verb + prefix + " " + Handlebars.Utils.escapeExpression(channel_name);
         const channel = stream_data.get_sub_by_name(channel_name);
         assert(channel !== undefined);
         const term = {
@@ -278,8 +267,6 @@ function get_group_suggestions(last: NarrowTerm, terms: NarrowTerm[]): Suggestio
 
     const prefix = Filter.operator_to_prefix("dm", negated);
 
-    const person_highlighter = make_person_highlighter(last_part);
-
     return persons.map((person) => {
         const term = {
             operator: "dm",
@@ -292,10 +279,7 @@ function get_group_suggestions(last: NarrowTerm, terms: NarrowTerm[]): Suggestio
             terms = [{operator: "is", operand: "dm"}, term];
         }
 
-        const all_user_pill_contexts = [
-            ...user_pill_contexts,
-            highlight_person(person, person_highlighter),
-        ];
+        const all_user_pill_contexts = [...user_pill_contexts, user_pill_item(person)];
 
         return {
             description_html: prefix,
@@ -346,8 +330,6 @@ function get_person_suggestions(
         last = {operator: "dm", operand: "", negated: false};
     }
 
-    const query = last.operand;
-
     // Be especially strict about the less common "from" operator.
     if (autocomplete_operator === "from" && last.operator !== "from") {
         return [];
@@ -383,8 +365,6 @@ function get_person_suggestions(
 
     const prefix = Filter.operator_to_prefix(autocomplete_operator, last.negated);
 
-    const person_highlighter = make_person_highlighter(query);
-
     return persons.map((person) => {
         const terms: NarrowTerm[] = [
             {
@@ -410,7 +390,7 @@ function get_person_suggestions(
             is_people: true,
             users: [
                 {
-                    user_pill_context: highlight_person(person, person_highlighter),
+                    user_pill_context: user_pill_item(person),
                 },
             ],
         };
@@ -421,7 +401,16 @@ function get_default_suggestion_line(terms: NarrowTerm[]): SuggestionLine {
     if (terms.length === 0) {
         return [{description_html: "", search_string: "", is_people: false}];
     }
-    return terms.map((term) => format_as_suggestion([term]));
+    const suggestion_line = [];
+    const suggestion_strings = new Set();
+    for (const term of terms) {
+        const suggestion = format_as_suggestion([term]);
+        if (!suggestion_strings.has(suggestion.search_string)) {
+            suggestion_line.push(suggestion);
+            suggestion_strings.add(suggestion.search_string);
+        }
+    }
+    return suggestion_line;
 }
 
 export function get_topic_suggestions_from_candidates({
@@ -646,12 +635,8 @@ function get_channels_filter_suggestions(last: NarrowTerm, terms: NarrowTerm[]):
     if (last.operator === "search" && common.phrase_match(last.operand, "streams")) {
         search_string = "streams:public";
     }
-    let description_html;
-    if (page_params.is_spectator || current_user.is_guest) {
-        description_html = "All public channels that you can view";
-    } else {
-        description_html = "All public channels";
-    }
+    let description_html = Filter.describe_public_channels(last.negated ?? false);
+    description_html = description_html.charAt(0).toUpperCase() + description_html.slice(1);
     const suggestions: SuggestionAndIncompatiblePatterns[] = [
         {
             search_string,
@@ -1044,13 +1029,17 @@ class Attacher {
     }
 }
 
+export function search_term_description_html(item: NarrowTerm): string {
+    return `search for ${Handlebars.Utils.escapeExpression(item.operand)}`;
+}
+
 export function get_search_result(
     pill_search_terms: NarrowTerm[],
     text_search_terms: NarrowTerm[],
     add_current_filter = false,
 ): Suggestion[] {
     let suggestion_line: SuggestionLine;
-
+    text_search_terms = text_search_terms.map((term) => Filter.canonicalize_term(term));
     // search_terms correspond to the terms for the query in the input.
     // This includes the entire query entered in the searchbox.
     // terms correspond to the terms for the entire query entered in the searchbox.
@@ -1098,9 +1087,7 @@ export function get_search_result(
         suggestion_line = [
             {
                 search_string: last.operand,
-                description_html: `search for <strong>${Handlebars.Utils.escapeExpression(
-                    last.operand,
-                )}</strong>`,
+                description_html: search_term_description_html(last),
                 is_people: false,
             },
         ];
@@ -1173,7 +1160,7 @@ export function get_search_result(
     return attacher.get_result().slice(0, max_items);
 }
 
-export function get_suggestions(
+export let get_suggestions = function (
     pill_search_terms: NarrowTerm[],
     text_search_terms: NarrowTerm[],
     add_current_filter = false,
@@ -1183,6 +1170,10 @@ export function get_suggestions(
 } {
     const result = get_search_result(pill_search_terms, text_search_terms, add_current_filter);
     return finalize_search_result(result);
+};
+
+export function rewire_get_suggestions(value: typeof get_suggestions): void {
+    get_suggestions = value;
 }
 
 export function finalize_search_result(result: Suggestion[]): {

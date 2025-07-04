@@ -521,6 +521,7 @@ export function discard_realm_property_element_changes(elem: HTMLElement): void 
         case "realm_can_move_messages_between_channels_group":
         case "realm_can_move_messages_between_topics_group":
         case "realm_can_resolve_topics_group":
+        case "realm_can_set_topics_policy_group":
         case "realm_can_summarize_topics_group":
         case "realm_create_multiuse_invite_group":
         case "realm_direct_message_initiator_group":
@@ -626,6 +627,9 @@ export function discard_stream_property_element_changes(
         }
         case "message_retention_days":
             set_message_retention_setting_dropdown(sub);
+            break;
+        case "folder_id":
+            settings_components.set_channel_folder_dropdown_value(sub);
             break;
         default:
             if (property_value !== undefined) {
@@ -1121,6 +1125,8 @@ export let init_dropdown_widgets = (): void => {
 
         const disabled_option = {
             is_setting_disabled: true,
+            show_disabled_icon: true,
+            show_disabled_option_name: false,
             unique_id: DISABLED_STATE_ID,
             name: $t({defaultMessage: "Disabled"}),
         };
@@ -1169,6 +1175,8 @@ export const combined_code_language_options = (): dropdown_widget.Option[] => {
 
     const disabled_option = {
         is_setting_disabled: true,
+        show_disabled_icon: true,
+        show_disabled_option_name: false,
         unique_id: "",
         name: $t({defaultMessage: "No language set"}),
     };
@@ -1340,6 +1348,16 @@ export function build_page(): void {
     disable_create_user_groups_if_on_limited_plan();
 
     register_save_discard_widget_handlers($(".admin-realm-form"), "/json/realm", false);
+
+    $(".org-permissions-form").on(
+        "input change",
+        ".time-limit-custom-input",
+        function (this: HTMLInputElement, e) {
+            e.preventDefault();
+            e.stopPropagation();
+            settings_components.update_custom_time_limit_minute_text($(this));
+        },
+    );
 
     $(".settings-subsection-parent").on("keydown", "input", (e) => {
         e.stopPropagation();

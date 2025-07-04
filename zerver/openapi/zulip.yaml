@@ -1179,13 +1179,23 @@ paths:
                                 }
                             - type: object
                               description: |
-                                Event sent to all users in an organization when a user comes
-                                back online after being offline for a while. While most presence
-                                updates are done via polling the [main presence
-                                endpoint](/api/get-presence), this event is important to avoid
-                                confusing users when someone comes online and immediately sends
-                                a message (one wouldn't want them to still appear offline at
-                                that point!).
+                                Event sent to all users in an organization when a user comes back
+                                online after being offline for a while.
+
+                                In addition to handling these events, a client that wants to
+                                maintain presence data must poll the [main presence
+                                endpoint](https://zulip.com/api/get-presence). Most updates to
+                                presence data, refreshing the timestamps of users who are already
+                                online, do not appear in the event queue. This design is an
+                                optimization by allowing those updates to be batched up, because
+                                there is no urgency in the information that an already-online user
+                                is still online.
+
+                                These events are provided because when a user transitions from
+                                offline to online, that is information the client may want to show
+                                promptly in the UI to avoid showing a confusing state (for example,
+                                if the newly-online user sends a message or otherwise demonstrates
+                                they're online).
 
                                 If the `CAN_ACCESS_ALL_USERS_GROUP_LIMITS_PRESENCE` server-level
                                 setting is set to `true`, then the event is only sent to users
@@ -1367,6 +1377,7 @@ paths:
                                         "can_remove_subscribers_group": 2,
                                         "can_subscribe_group": 2,
                                         "stream_weekly_traffic": null,
+                                        "subscriber_count": 0,
                                       },
                                     ],
                                   "id": 0,
@@ -2136,7 +2147,10 @@ paths:
                                     Only present for clients that support the `bulk_message_deletion`
                                     [client capability][client-capabilities].
 
-                                    A list containing the IDs of the newly deleted messages.
+                                    A sorted list containing the IDs of the newly deleted messages.
+
+                                    **Changes**: Before Zulip 11.0 (feature level 393), this list was
+                                    not guaranteed to be sorted.
 
                                     [client-capabilities]: /api/register-queue#parameter-client_capabilities
                                   items:
@@ -2473,8 +2487,8 @@ paths:
                                   items:
                                     type: integer
                                   description: |
-                                    The list of IDs of messages to which any channel or topic changes
-                                    encoded in this event should be applied.
+                                    A sorted list of IDs of messages to which any channel or topic
+                                    changes encoded in this event should be applied.
 
                                     This list always includes `message_id`, even when there are no
                                     channel or topic changes to apply.
@@ -2492,6 +2506,9 @@ paths:
 
                                     Content changes should be applied only to the single message
                                     indicated by `message_id`.
+
+                                    **Changes**: Before Zulip 11.0 (feature level 393), this list
+                                    was not guaranteed to be sorted.
                                 flags:
                                   type: array
                                   description: |
@@ -2717,7 +2734,7 @@ paths:
                                   "orig_subject": "test",
                                   "subject": "new_topic",
                                   "topic_links": [],
-                                  "message_ids": [58, 57],
+                                  "message_ids": [57, 58],
                                   "flags": [],
                                   "rendering_only": false,
                                   "id": 0,
@@ -4769,6 +4786,19 @@ paths:
                                             setting controlled this permission; `true` corresponded to `Everyone`, and
                                             `false` to `Admins`.
                                         - $ref: "#/components/schemas/GroupSettingValue"
+                                    can_set_topics_policy_group:
+                                      allOf:
+                                        - description: |
+                                            A [group-setting value](/api/group-setting-values) defining the set of
+                                            users who have permission to change per-channel `topics_policy` setting. Note that
+                                            the user must be a member of both this group and the `can_administer_channel_group`
+                                            of the channel whose `topics_policy` they want to change.
+
+                                            Organization administrators can always change the `topics_policy` setting of
+                                            every channel.
+
+                                            **Changes**: New in Zulip 11.0 (feature level 392).
+                                        - $ref: "#/components/schemas/GroupSettingValue"
                                     can_invite_users_group:
                                       allOf:
                                         - description: |
@@ -5069,8 +5099,25 @@ paths:
                                         [organization profile](/help/create-your-organization-profile).
                                     mandatory_topics:
                                       type: boolean
+                                      deprecated: true
                                       description: |
                                         Whether [topics are required](/help/require-topics) for messages in this organization.
+
+                                        **Changes**: Deprecated in Zulip 11.0 (feature level 392). This configuration is
+                                        now controlled by `topics_policy` realm setting.
+                                    topics_policy:
+                                      type: string
+                                      enum:
+                                        - allow_empty_topic
+                                        - disable_empty_topic
+                                      description: |
+                                        Configuration defining the default policy for sending messages in empty topics.
+
+                                        - allow_empty_topic - Topics are not required to send messages in the channels.
+                                        - disable_empty_topic - Topics are required to send messages in the channels.
+
+                                        **Changes**: New in Zulip 11.0 (feature level 392). Previously, this configuration was
+                                        controlled by a boolean realm setting, `mandatory_topics`.
                                     max_file_upload_size_mib:
                                       type: integer
                                       description: |
@@ -5717,6 +5764,78 @@ paths:
                                   "type": "saved_snippets",
                                   "op": "remove",
                                   "saved_snippet_id": 17,
+                                }
+                            - type: object
+                              additionalProperties: false
+                              description: |
+                                Event sent to a user's clients when a reminder is scheduled.
+
+                                **Changes**: New in Zulip 11.0 (feature level 399).
+                              properties:
+                                id:
+                                  $ref: "#/components/schemas/EventIdSchema"
+                                type:
+                                  allOf:
+                                    - $ref: "#/components/schemas/EventTypeSchema"
+                                    - enum:
+                                        - reminders
+                                op:
+                                  type: string
+                                  enum:
+                                    - add
+                                reminders:
+                                  type: array
+                                  description: |
+                                    An array of objects containing details of the newly created
+                                    reminders.
+                                  items:
+                                    $ref: "#/components/schemas/Reminder"
+                              example:
+                                {
+                                  "type": "reminders",
+                                  "op": "add",
+                                  "reminders":
+                                    [
+                                      {
+                                        "reminder_id": 17,
+                                        "type": "private",
+                                        "to": [6],
+                                        "content": "Hello there!",
+                                        "rendered_content": "<p>Hello there!</p>",
+                                        "scheduled_delivery_timestamp": 1681662420,
+                                        "failed": false,
+                                        "reminder_target_message_id": 42,
+                                      },
+                                    ],
+                                }
+                            - type: object
+                              additionalProperties: false
+                              description: |
+                                Event sent to a user's clients when a reminder
+                                is deleted.
+
+                                **Changes**: New in Zulip 11.0 (feature level 399).
+                              properties:
+                                id:
+                                  $ref: "#/components/schemas/EventIdSchema"
+                                type:
+                                  allOf:
+                                    - $ref: "#/components/schemas/EventTypeSchema"
+                                    - enum:
+                                        - reminders
+                                op:
+                                  type: string
+                                  enum:
+                                    - remove
+                                reminder_id:
+                                  type: integer
+                                  description: |
+                                    The ID of the reminder that was deleted.
+                              example:
+                                {
+                                  "type": "reminders",
+                                  "op": "remove",
+                                  "reminder_id": 17,
                                 }
                             - type: object
                               additionalProperties: false
@@ -6973,6 +7092,56 @@ paths:
                         "msg": "Saved snippet does not exist.",
                       }
   /reminders:
+    get:
+      operationId: get-reminders
+      tags: ["reminders"]
+      summary: Get reminders
+      description: |
+        Fetch all [reminders](/help/schedule-a-reminder) for the
+        current user.
+
+        Reminders are messages the user has scheduled to be sent in the
+        future to themself.
+
+        **Changes**: New in Zulip 11.0 (feature level 399).
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/JsonSuccessBase"
+                  - additionalProperties: false
+                    properties:
+                      result: {}
+                      msg: {}
+                      ignored_parameters_unsupported: {}
+                      reminders:
+                        type: array
+                        description: |
+                          Returns all of the current user's undelivered reminders,
+                          ordered by `scheduled_delivery_timestamp` (ascending).
+                        items:
+                          $ref: "#/components/schemas/Reminder"
+                    example:
+                      {
+                        "result": "success",
+                        "msg": "",
+                        "reminders":
+                          [
+                            {
+                              "reminder_id": 27,
+                              "to": [6],
+                              "type": "private",
+                              "content": "Hi",
+                              "rendered_content": "<p>Hi</p>",
+                              "scheduled_delivery_timestamp": 1681662420,
+                              "failed": false,
+                              "reminder_target_message_id": 42,
+                            },
+                          ],
+                      }
     post:
       operationId: create-message-reminder
       tags: ["reminders"]
@@ -7017,6 +7186,48 @@ paths:
                         description: |
                           Unique ID of the scheduled message reminder.
                     example: {"msg": "", "reminder_id": 42, "result": "success"}
+
+  /reminders/{reminder_id}:
+    delete:
+      operationId: delete-reminder
+      tags: ["reminders"]
+      summary: Delete a reminder
+      description: |
+        Delete, and therefore cancel sending, a previously [scheduled
+        reminder](/help/schedule-a-reminder).
+
+        **Changes**: New in Zulip 11.0 (feature level 399).
+      parameters:
+        - name: reminder_id
+          in: path
+          schema:
+            type: integer
+          description: |
+            The ID of the reminder to delete.
+
+            This is different from the unique ID that the message would have
+            after being sent.
+          required: true
+          example: 1
+      responses:
+        "200":
+          $ref: "#/components/responses/SimpleSuccess"
+        "404":
+          description: Not Found.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/CodedError"
+                  - description: |
+                      A typical failed JSON response for when no reminder exists
+                      with the provided ID:
+                    example:
+                      {
+                        "code": "BAD_REQUEST",
+                        "result": "error",
+                        "msg": "Reminder does not exist",
+                      }
   /scheduled_messages:
     get:
       operationId: get-scheduled-messages
@@ -10252,11 +10463,6 @@ paths:
         Zulip clients like mobile/desktop apps will want to use the [main
         presence endpoint](/api/get-presence), which returns data for all
         active users in the organization, instead.
-
-        See [Zulip's developer documentation][subsystems-presence]
-        for details on the data model for presence in Zulip.
-
-        [subsystems-presence]: https://zulip.readthedocs.io/en/latest/subsystems/presence.html
       parameters:
         - name: user_id_or_email
           in: path
@@ -10751,8 +10957,7 @@ paths:
           to the server.
 
         - Obtaining the presence data of all other users in the organization via
-          regular polling (in parallel with receiving
-          [`presence` events](/api/get-events#presence)).
+          regular polling.
 
         Accurate user presence is one of the most expensive parts of any
         chat application (in terms of bandwidth and other resources). Therefore,
@@ -10760,8 +10965,9 @@ paths:
         use the modern [`last_update_id`](#parameter-last_update_id) protocol to
         minimize fetching duplicate user presence data.
 
-        See [Zulip's developer documentation][subsystems-presence] for details
-        on the data model for user presence in Zulip.
+        Client apps implementing presence are recommended to also consume [`presence`
+        events](/api/get-events#presence)), in order to learn about newly online users
+        immediately.
 
         The Zulip server is responsible for implementing [invisible mode][invisible],
         which disables sharing a user's presence data. Nonetheless, clients
@@ -10774,7 +10980,6 @@ paths:
         `true`, then user presence data in the response is [limited to users
         the current user can see/access][limit-visibility].
 
-        [subsystems-presence]: https://zulip.readthedocs.io/en/latest/subsystems/presence.html
         [limit-visibility]: /help/guest-users#configure-whether-guests-can-see-all-other-users
         [invisible]: /help/status-and-availability#invisible-mode
         [availability]: /help/status-and-availability#availability
@@ -11528,12 +11733,18 @@ paths:
                   $ref: "#/components/schemas/HistoryPublicToSubscribers"
                 message_retention_days:
                   $ref: "#/components/schemas/MessageRetentionDays"
+                topics_policy:
+                  $ref: "#/components/schemas/TopicsPolicy"
                 can_add_subscribers_group:
                   $ref: "#/components/schemas/ChannelCanAddSubscribersGroup"
                 can_remove_subscribers_group:
                   $ref: "#/components/schemas/CanRemoveSubscribersGroup"
                 can_administer_channel_group:
                   $ref: "#/components/schemas/CanAdministerChannelGroup"
+                can_move_messages_out_of_channel_group:
+                  $ref: "#/components/schemas/CanMoveMessagesOutOfChannelGroup"
+                can_move_messages_within_channel_group:
+                  $ref: "#/components/schemas/CanMoveMessagesWithinChannelGroup"
                 can_send_message_group:
                   $ref: "#/components/schemas/CanSendMessageGroup"
                 can_subscribe_group:
@@ -11549,6 +11760,23 @@ paths:
                     **Changes**: New in Zulip 11.0 (feature level 389).
                   type: integer
                   example: 1
+                send_new_subscription_messages:
+                  description: |
+                    Whether any other users newly subscribed via this request should be
+                    sent a Notification Bot DM notifying them about their new
+                    subscription.
+
+                    The server will never send Notification Bot DMs if more than
+                    `max_bulk_new_subscription_messages` (available in the [`POST
+                    /register`](/api/register-queue) response) users were subscribed in
+                    this request.
+
+                    **Changes**: Before Zulip 11.0 (feature level 397), new subscribers
+                    were always sent a Notification Bot DM, which was unduly expensive
+                    when bulk-subscribing thousands of users to a channel.
+                  type: boolean
+                  default: true
+                  example: true
               required:
                 - subscriptions
             encoding:
@@ -11568,11 +11796,17 @@ paths:
                 contentType: application/json
               history_public_to_subscribers:
                 contentType: application/json
+              topics_policy:
+                contentType: application/json
               can_add_subscribers_group:
                 contentType: application/json
               can_remove_subscribers_group:
                 contentType: application/json
               can_administer_channel_group:
+                contentType: application/json
+              can_move_messages_out_of_channel_group:
+                contentType: application/json
+              can_move_messages_within_channel_group:
                 contentType: application/json
               can_send_message_group:
                 contentType: application/json
@@ -11633,6 +11867,18 @@ paths:
                         description: |
                           A list of names of channels that the requesting user/bot was not
                           authorized to subscribe to. Only present if `"authorization_errors_fatal": false`.
+                      new_subscription_messages_sent:
+                        type: boolean
+                        description: |
+                          Only present if the parameter `send_new_subscription_messages`
+                          in the request was `true`.
+
+                          Whether Notification Bot DMs in fact sent to the added
+                          subscribers as requested by the `send_new_subscription_messages`
+                          parameter. Clients may find this value useful to communicate
+                          with users about the effect of this request.
+
+                          **Changes**: New in Zulip 11.0 (feature level 397).
                     example:
                       {
                         "already_subscribed": {"1": ["testing-help"]},
@@ -11769,6 +12015,18 @@ paths:
                         description: |
                           A list of the names of channels which were unsubscribed
                           from as a result of the query.
+                      new_subscription_messages_sent:
+                        type: boolean
+                        description: |
+                          Only present if the parameter `send_new_subscription_messages`
+                          in the request was `true`.
+
+                          Whether Notification Bot DMs in fact sent to the added
+                          subscribers as requested by the `send_new_subscription_messages`
+                          parameter. Clients may find this value useful to communicate
+                          with users about the effect of this request.
+
+                          **Changes**: New in Zulip 11.0 (feature level 397).
                     example:
                       {
                         "msg": "",
@@ -12606,10 +12864,9 @@ paths:
         setting is set to `true`, presence information of only accessible
         users are returned.
 
-        See [Zulip's developer documentation][subsystems-presence]
-        for details on the data model for presence in Zulip.
-
-        [subsystems-presence]: https://zulip.readthedocs.io/en/latest/subsystems/presence.html
+        Complete Zulip apps are recommended to fetch presence
+        information when they post their own state using the [`POST
+        /presence`](/api/update-presence) API endpoint.
       responses:
         "200":
           description: Success.
@@ -13069,9 +13326,12 @@ paths:
                     - 1 - Top topic in the channel
                     - 2 - Channel feed
                     - 3 - List of topics
+                    - 4 - Top unread topic in channel
 
-                    **Changes**: The "List of topics" option is new in
-                    Zulip 11.0 (feature level 383).
+                    **Changes**: The "Top unread topic in channel" is new in Zulip 11.0
+                    (feature level 401).
+
+                    The "List of topics" option is new in Zulip 11.0 (feature level 383).
 
                     New in Zulip 9.0 (feature level 269). Previously, this
                     was not configurable, and every user had the "Channel feed" behavior.
@@ -13081,6 +13341,7 @@ paths:
                     - 1
                     - 2
                     - 3
+                    - 4
                   example: 1
                 web_font_size_px:
                   description: |
@@ -13255,6 +13516,14 @@ paths:
                     be hidden in all Zulip clients.
 
                     **Changes**: New in Zulip 10.0 (feature level 350).
+                web_left_sidebar_unreads_count_summary:
+                  description: |
+                    Determines whether the web/desktop application's left sidebar displays
+                    the unread message count summary.
+
+                    **Changes**: New in Zulip 11.0 (feature level 398).
+                  type: boolean
+                  example: true
                 enable_stream_desktop_notifications:
                   description: |
                     Enable visual desktop notifications for channel messages.
@@ -13580,6 +13849,8 @@ paths:
               web_stream_unreads_count_display_policy:
                 contentType: application/json
               hide_ai_features:
+                contentType: application/json
+              web_left_sidebar_unreads_count_summary:
                 contentType: application/json
               enable_stream_desktop_notifications:
                 contentType: application/json
@@ -15772,6 +16043,17 @@ paths:
                           **Changes**: New in Zulip 7.0 (feature level 179).
                         items:
                           $ref: "#/components/schemas/ScheduledMessage"
+                      reminders:
+                        type: array
+                        description: |
+                          Present if `reminders` is present in `fetch_event_types`.
+
+                          An array of all undelivered reminders scheduled by the user.
+
+                          **Changes**: New in Zulip 11.0 (feature level 399).
+                        items:
+                          $ref: "#/components/schemas/ScheduledMessage"
+
                       muted_topics:
                         type: array
                         deprecated: true
@@ -16179,6 +16461,7 @@ paths:
                                 message_retention_days:
                                   nullable: true
                                 history_public_to_subscribers: {}
+                                topics_policy: {}
                                 first_message_id:
                                   nullable: true
                                 folder_id:
@@ -16188,8 +16471,11 @@ paths:
                                 can_add_subscribers_group: {}
                                 can_remove_subscribers_group: {}
                                 can_administer_channel_group: {}
+                                can_move_messages_out_of_channel_group: {}
+                                can_move_messages_within_channel_group: {}
                                 can_send_message_group: {}
                                 can_subscribe_group: {}
+                                subscriber_count: {}
                                 stream_weekly_traffic:
                                   type: integer
                                   nullable: true
@@ -16513,9 +16799,12 @@ paths:
                               - 1 - Top topic in the channel
                               - 2 - Channel feed
                               - 3 - List of topics
+                              - 4 - Top unread topic in channel
 
-                              **Changes**: The "List of topics" option is new in
-                              Zulip 11.0 (feature level 383).
+                              **Changes**: The "Top unread topic in channel" is new in Zulip 11.0
+                              (feature level 401).
+
+                              The "List of topics" option is new in Zulip 11.0 (feature level 383).
 
                               New in Zulip 9.0 (feature level 269). Previously, this
                               was not configurable, and every user had the "Channel feed" behavior.
@@ -16693,6 +16982,13 @@ paths:
                               be hidden in all Zulip clients.
 
                               **Changes**: New in Zulip 10.0 (feature level 350).
+                          web_left_sidebar_unreads_count_summary:
+                            type: boolean
+                            description: |
+                              Determines whether the web/desktop application's left sidebar displays
+                              the unread message count summary.
+
+                              **Changes**: New in Zulip 11.0 (feature level 398).
                           timezone:
                             type: string
                             description: |
@@ -17804,6 +18100,21 @@ paths:
                               setting controlled this permission; `true` corresponded to `Everyone`, and
                               `false` to `Admins`.
                           - $ref: "#/components/schemas/GroupSettingValue"
+                      realm_can_set_topics_policy_group:
+                        allOf:
+                          - description: |
+                              Present if `realm` is present in `fetch_event_types`.
+
+                              A [group-setting value](/api/group-setting-values) defining the set of
+                              users who have permission to change per-channel `topics_policy` setting. Note that
+                              the user must be a member of both this group and the `can_administer_channel_group`
+                              of the channel whose `topics_policy` they want to change.
+
+                              Organization administrators can always change the `topics_policy` setting of
+                              every channel.
+
+                              **Changes**: New in Zulip 11.0 (feature level 392).
+                          - $ref: "#/components/schemas/GroupSettingValue"
                       realm_can_invite_users_group:
                         allOf:
                           - description: |
@@ -18197,10 +18508,29 @@ paths:
                           [previews of linked websites](/help/image-video-and-website-previews).
                       realm_mandatory_topics:
                         type: boolean
+                        deprecated: true
                         description: |
                           Present if `realm` is present in `fetch_event_types`.
 
                           Whether [topics are required](/help/require-topics) for messages in this organization.
+
+                          **Changes**: Deprecated in Zulip 11.0 (feature level 392). This configuration is
+                          now controlled by `topics_policy` realm setting.
+                      realm_topics_policy:
+                        type: string
+                        enum:
+                          - allow_empty_topic
+                          - disable_empty_topic
+                        description: |
+                          Present if `realm` is present in `fetch_event_types`.
+
+                          Configuration defining the default policy for sending messages in empty topics.
+
+                          - allow_empty_topic - Topics are not required to send messages in the channels.
+                          - disable_empty_topic - Topics are required to send messages in the channels.
+
+                          **Changes**: New in Zulip 11.0 (feature level 392). Previously, this configuration was
+                          controlled by a boolean realm setting, `mandatory_topics`.
                       realm_message_retention_days:
                         type: integer
                         description: |
@@ -19275,9 +19605,13 @@ paths:
                               - 1 - Top topic in the channel
                               - 2 - Channel feed
                               - 3 - List of topics
+                              - 4 - Top unread topic in channel
 
-                              **Changes**: In Zulip 11.0 (feature level 383), we added a new option
-                              "List of topics" to this setting.
+                              **Changes**: The "Top unread topic in channel" is new in Zulip 11.0
+                              (feature level 401).
+
+                              In Zulip 11.0 (feature level 383), we added a new option "List of topics"
+                              to this setting.
 
                               New in Zulip 9.0 (feature level 269). Previously, this
                               was not configurable, and every user had the "Channel feed" behavior.
@@ -19455,6 +19789,13 @@ paths:
                               be hidden in all Zulip clients.
 
                               **Changes**: New in Zulip 10.0 (feature level 350).
+                          web_left_sidebar_unreads_count_summary:
+                            type: boolean
+                            description: |
+                              Determines whether the web/desktop application's left sidebar displays
+                              the unread message count summary.
+
+                              **Changes**: New in Zulip 11.0 (feature level 398).
                           enable_stream_desktop_notifications:
                             type: boolean
                             description: |
@@ -19993,6 +20334,15 @@ paths:
                               Configuration for group level group permission settings.
                             additionalProperties:
                               $ref: "#/components/schemas/GroupPermissionSetting"
+                      max_bulk_new_subscription_messages:
+                        description: |
+                          Maximum number of new subscribers for which the server will
+                          respect the `send_new_subscription_messages` parameter when
+                          [adding subscribers to a channel](/api/subscribe#parameter-send_new_subscription_messages).
+
+                          **Changes**: New in Zulip 11.0 (feature level 397).
+                        type: number
+                        example: 100
                     example:
                       {
                         "last_event_id": -1,
@@ -20436,9 +20786,12 @@ paths:
                     - 1 - Top topic in the channel
                     - 2 - Channel feed
                     - 3 - List of topics
+                    - 4 - Top unread topic in channel
 
-                    **Changes**: The "List of topics" option is new in
-                    Zulip 11.0 (feature level 383).
+                    **Changes**: The "Top unread topic in channel" is new in Zulip 11.0
+                    (feature level 401).
+
+                    The "List of topics" option is new in Zulip 11.0 (feature level 383).
 
                     New in Zulip 9.0 (feature level 269). Previously, this
                     was not configurable, and every user had the "Channel feed" behavior.
@@ -20446,6 +20799,7 @@ paths:
                   enum:
                     - 1
                     - 2
+                    - 4
                   example: 1
                 starred_message_counts:
                   description: |
@@ -20708,6 +21062,14 @@ paths:
                     be hidden in all Zulip clients.
 
                     **Changes**: New in Zulip 10.0 (feature level 350).
+                web_left_sidebar_unreads_count_summary:
+                  description: |
+                    Determines whether the web/desktop application's left sidebar displays
+                    the unread message count summary.
+
+                    **Changes**: New in Zulip 11.0 (feature level 398).
+                  type: boolean
+                  example: true
                 timezone:
                   description: |
                     The IANA identifier of the user's [profile time zone](/help/change-your-timezone),
@@ -21121,6 +21483,8 @@ paths:
                 contentType: application/json
               hide_ai_features:
                 contentType: application/json
+              web_left_sidebar_unreads_count_summary:
+                contentType: application/json
               enable_stream_desktop_notifications:
                 contentType: application/json
               enable_stream_email_notifications:
@@ -21383,6 +21747,7 @@ paths:
                                 message_retention_days:
                                   nullable: true
                                 history_public_to_subscribers: {}
+                                topics_policy: {}
                                 first_message_id:
                                   nullable: true
                                 folder_id:
@@ -21392,8 +21757,11 @@ paths:
                                 can_add_subscribers_group: {}
                                 can_remove_subscribers_group: {}
                                 can_administer_channel_group: {}
+                                can_move_messages_out_of_channel_group: {}
+                                can_move_messages_within_channel_group: {}
                                 can_send_message_group: {}
                                 can_subscribe_group: {}
+                                subscriber_count: {}
                                 stream_weekly_traffic:
                                   type: integer
                                   nullable: true
@@ -21439,6 +21807,7 @@ paths:
                                 - can_subscribe_group
                                 - stream_weekly_traffic
                                 - is_recently_active
+                                - subscriber_count
                     example:
                       {
                         "msg": "",
@@ -21467,6 +21836,7 @@ paths:
                               "stream_id": 2,
                               "stream_post_policy": 1,
                               "stream_weekly_traffic": null,
+                              subscriber_count: 20,
                             },
                             {
                               "can_add_subscribers_group": 9,
@@ -21490,6 +21860,7 @@ paths:
                               "stream_id": 1,
                               "stream_post_policy": 1,
                               "stream_weekly_traffic": null,
+                              subscriber_count: 10,
                             },
                           ],
                       }
@@ -21545,6 +21916,7 @@ paths:
                             "can_remove_subscribers_group": 2,
                             "can_subscribe_group": 2,
                             "stream_weekly_traffic": null,
+                            subscriber_count: 12,
                           },
                       }
         "400":
@@ -21715,6 +22087,8 @@ paths:
                   type: integer
                   nullable: true
                   example: 1
+                topics_policy:
+                  $ref: "#/components/schemas/TopicsPolicy"
                 can_add_subscribers_group:
                   allOf:
                     - description: |
@@ -21808,6 +22182,58 @@ paths:
                           "old": 15,
                         }
                     - $ref: "#/components/schemas/GroupSettingValueUpdate"
+                can_move_messages_out_of_channel_group:
+                  allOf:
+                    - description: |
+                        The set of users who have permission to move messages out of this channel
+                        expressed as an [update to a group-setting value][update-group-setting].
+
+                        [update-group-setting]: /api/group-setting-values#updating-group-setting-values
+
+                        Note that a user must [have content access](/help/channel-permissions) to a
+                        channel in order to move messages out of the channel.
+
+                        Channel administrators and users present in the organization-level
+                        `can_move_messages_between_channels_group` setting can always move messages
+                        out of the channel if they [have content access](/help/channel-permissions) to
+                        the channel.
+
+                        **Changes**: New in Zulip 11.0 (feature level 396). Prior to this
+                        change, only the users in `can_move_messages_between_channels_group` were able
+                        move messages between channels.
+                      example:
+                        {
+                          "new":
+                            {"direct_members": [10], "direct_subgroups": [11]},
+                          "old": 15,
+                        }
+                    - $ref: "#/components/schemas/GroupSettingValueUpdate"
+                can_move_messages_within_channel_group:
+                  allOf:
+                    - description: |
+                        The set of users who have permission to move messages within this channel
+                        expressed as an [update to a group-setting value][update-group-setting].
+
+                        [update-group-setting]: /api/group-setting-values#updating-group-setting-values
+
+                        Note that a user must [have content access](/help/channel-permissions) to a
+                        channel in order to move messages within the channel.
+
+                        Channel administrators and users present in the organization-level
+                        `can_move_messages_between_topics_group` setting can always move messages
+                        within the channel if they [have content access](/help/channel-permissions) to
+                        the channel.
+
+                        **Changes**: New in Zulip 11.0 (feature level 396). Prior to this
+                        change, only the users in `can_move_messages_between_topics_group` were able
+                        move messages between topics of a channel.
+                      example:
+                        {
+                          "new":
+                            {"direct_members": [10], "direct_subgroups": [11]},
+                          "old": 15,
+                        }
+                    - $ref: "#/components/schemas/GroupSettingValueUpdate"
                 can_send_message_group:
                   allOf:
                     - description: |
@@ -21872,6 +22298,10 @@ paths:
               can_remove_subscribers_group:
                 contentType: application/json
               can_administer_channel_group:
+                contentType: application/json
+              can_move_messages_out_of_channel_group:
+                contentType: application/json
+              can_move_messages_within_channel_group:
                 contentType: application/json
               can_send_message_group:
                 contentType: application/json
@@ -22518,6 +22948,9 @@ paths:
         Update the members of a [user group](/help/user-groups). The
         user IDs must correspond to non-deactivated users.
 
+        **Changes**: Prior to Zulip 11.0 (feature level 391), members
+        could not be added or removed from a deactivated group.
+
         **Changes**: Prior to Zulip 10.0 (feature level 303), group memberships of
         deactivated users were visible to the API and could be edited via this endpoint.
       x-curl-examples-parameters:
@@ -22628,7 +23061,7 @@ paths:
         membership, the deactivated group itself cannot be mentioned
         or used in the value of any permission without first being reactivated.
 
-        **Changes**: Starting with Zulip 11.0 (feature level ZF-61b9bf), this
+        **Changes**: Starting with Zulip 11.0 (feature level 386), this
         endpoint can be used to reactivate a user group.
 
         Prior to Zulip 10.0 (feature level 340), only the name field
@@ -23110,6 +23543,9 @@ paths:
       tags: ["users"]
       description: |
         Update the subgroups of a [user group](/help/user-groups).
+
+        **Changes**: Prior to Zulip 11.0 (feature level 391), subgroups
+        could not be added or removed from a deactivated group.
 
         **Changes**: New in Zulip 6.0 (feature level 127).
       x-curl-examples-parameters:
@@ -23843,6 +24279,7 @@ components:
             message_retention_days:
               nullable: true
             history_public_to_subscribers: {}
+            topics_policy: {}
             first_message_id:
               nullable: true
             folder_id:
@@ -23852,8 +24289,11 @@ components:
             can_add_subscribers_group: {}
             can_remove_subscribers_group: {}
             can_administer_channel_group: {}
+            can_move_messages_out_of_channel_group: {}
+            can_move_messages_within_channel_group: {}
             can_send_message_group: {}
             can_subscribe_group: {}
+            subscriber_count: {}
             stream_weekly_traffic:
               type: integer
               nullable: true
@@ -23880,6 +24320,7 @@ components:
             - rendered_description
             - is_web_public
             - stream_post_policy
+            - subscriber_count
             - message_retention_days
             - history_public_to_subscribers
             - first_message_id
@@ -24004,6 +24445,8 @@ components:
             Currently always true for public channels (i.e. `"invite_only": false` implies
             `"history_public_to_subscribers": true`), but clients should not make that
             assumption, as we may change that behavior in the future.
+        topics_policy:
+          $ref: "#/components/schemas/TopicsPolicy"
         first_message_id:
           type: integer
           nullable: true
@@ -24043,10 +24486,35 @@ components:
           $ref: "#/components/schemas/CanRemoveSubscribersGroup"
         can_administer_channel_group:
           $ref: "#/components/schemas/CanAdministerChannelGroup"
+        can_move_messages_out_of_channel_group:
+          $ref: "#/components/schemas/CanMoveMessagesOutOfChannelGroup"
+        can_move_messages_within_channel_group:
+          $ref: "#/components/schemas/CanMoveMessagesWithinChannelGroup"
         can_send_message_group:
           $ref: "#/components/schemas/CanSendMessageGroup"
         can_subscribe_group:
           $ref: "#/components/schemas/CanSubscribeGroup"
+        subscriber_count:
+          type: number
+          description: |
+            The total number of non-deactivated users (including bots) who
+            are subscribed to the channel. Clients are responsible for updating
+            this value using `peer_add` and `peer_remove` events.
+
+            The server's internals cannot guarantee this value is correctly
+            synced with `peer_add` and `peer_remove` events for the channel. As
+            a result, if a (rare) race occurs between a change in the channel's
+            subscribers and fetching this value, it is possible for a client
+            that is correctly following the events protocol to end up with a
+            permanently off-by-one error in the channel's subscriber count.
+
+            Clients are recommended to fetch full subscriber data for a channel
+            in contexts where it is important to avoid this risk. The official
+            web application, for example, uses this field primarily while
+            waiting to fetch a given channel's full subscriber list from the
+            server.
+
+            **Changes**: New in Zulip 11.0 (feature level 394).
     BasicBot:
       allOf:
         - $ref: "#/components/schemas/BasicBotBase"
@@ -25087,6 +25555,8 @@ components:
             Is `null` for channels with no message history.
         folder_id:
           $ref: "#/components/schemas/FolderId"
+        topics_policy:
+          $ref: "#/components/schemas/TopicsPolicy"
         is_recently_active:
           type: boolean
           description: |
@@ -25111,6 +25581,10 @@ components:
           $ref: "#/components/schemas/CanRemoveSubscribersGroup"
         can_administer_channel_group:
           $ref: "#/components/schemas/CanAdministerChannelGroup"
+        can_move_messages_out_of_channel_group:
+          $ref: "#/components/schemas/CanMoveMessagesOutOfChannelGroup"
+        can_move_messages_within_channel_group:
+          $ref: "#/components/schemas/CanMoveMessagesWithinChannelGroup"
         can_send_message_group:
           $ref: "#/components/schemas/CanSendMessageGroup"
         can_subscribe_group:
@@ -25125,6 +25599,27 @@ components:
             channels. Note that some endpoints will never return archived
             channels unless the client declares explicit support for
             them via the `archived_channels` client capability.
+        subscriber_count:
+          type: number
+          description: |
+            The total number of non-deactivated users (including bots) who
+            are subscribed to the channel. Clients are responsible for updating
+            this value using `peer_add` and `peer_remove` events.
+
+            The server's internals cannot guarantee this value is correctly
+            synced with `peer_add` and `peer_remove` events for the channel. As
+            a result, if a (rare) race occurs between a change in the channel's
+            subscribers and fetching this value, it is possible for a client
+            that is correctly following the events protocol to end up with a
+            permanently off-by-one error in the channel's subscriber count.
+
+            Clients are recommended to fetch full subscriber data for a channel
+            in contexts where it is important to avoid this risk. The official
+            web application, for example, uses this field primarily while
+            waiting to fetch a given channel's full subscriber list from the
+            server.
+
+            **Changes**: New in Zulip 11.0 (feature level 394).
     DefaultChannelGroup:
       type: object
       description: |
@@ -25880,7 +26375,7 @@ components:
           description: |
             The UNIX timestamp for when the saved snippet was created, in
             UTC seconds.
-    ScheduledMessage:
+    ScheduledMessageBase:
       type: object
       description: |
         Object containing details of the scheduled message.
@@ -25954,6 +26449,84 @@ components:
         - rendered_content
         - scheduled_delivery_timestamp
         - failed
+    ScheduledMessage:
+      allOf:
+        - $ref: "#/components/schemas/ScheduledMessageBase"
+        - additionalProperties: false
+          properties:
+            scheduled_message_id: {}
+            type: {}
+            to: {}
+            topic: {}
+            content: {}
+            rendered_content: {}
+            scheduled_delivery_timestamp: {}
+            failed: {}
+    Reminder:
+      type: object
+      additionalProperties: false
+      description: |
+        Object containing details of the scheduled message.
+      properties:
+        reminder_id:
+          type: integer
+          description: |
+            The unique ID of the reminder, which can be used to
+            delete the reminder.
+
+            This is different from the unique ID that the message would have
+            after being sent.
+        type:
+          type: string
+          description: |
+            The type of the reminder. Always set to `"private"`.
+          enum:
+            - private
+        to:
+          type: array
+          items:
+            type: integer
+          description: |
+            Contains the ID of the user who scheduled the reminder,
+            and to which the reminder will be sent.
+        content:
+          type: string
+          description: |
+            The content/body of the reminder, in text/markdown format.
+        rendered_content:
+          type: string
+          description: |
+            The content/body of the reminder rendered in HTML.
+        scheduled_delivery_timestamp:
+          type: integer
+          description: |
+            The UNIX timestamp for when the message will be sent
+            by the server, in UTC seconds.
+          example: 1595479019
+        failed:
+          type: boolean
+          description: |
+            Whether the server has tried to send the reminder
+            and it failed to successfully send.
+
+            Clients that support unscheduling reminders
+            should display scheduled messages with `"failed": true` with an
+            indicator that the server failed to send the message at the
+            scheduled time, so that the user is aware of the failure and can
+            get the content of the scheduled message.
+        reminder_target_message_id:
+          type: integer
+          description: |
+            The ID of the message that the reminder is created for.
+      required:
+        - reminder_id
+        - type
+        - to
+        - content
+        - rendered_content
+        - scheduled_delivery_timestamp
+        - failed
+        - reminder_target_message_id
     GroupPermissionSetting:
       description: |
         Configuration for a group permission setting specifying the groups
@@ -26866,6 +27439,20 @@ components:
         - type: string
         - type: integer
       example: "20"
+    TopicsPolicy:
+      type: string
+      enum:
+        - inherit
+        - allow_empty_topic
+        - disable_empty_topic
+      description: |
+        Configuration defining the default policy for sending messages in the empty topic.
+
+        - inherit - Channel will inherit the organization-level setting, `realm_topics_policy`.
+        - allow_empty_topic - Topics are not required to send messages in the channel.
+        - disable_empty_topic - Topics are required to send messages in the channel.
+
+        **Changes**: New in Zulip 11.0 (feature level 392).
     ChannelCanAddSubscribersGroup:
       allOf:
         - $ref: "#/components/schemas/GroupSettingValue"
@@ -26938,6 +27525,46 @@ components:
             New in Zulip 10.0 (feature level 325). Prior to this
             change, the permission to administer channels was limited to realm
             administrators.
+
+            [setting-values]: /api/group-setting-values
+    CanMoveMessagesOutOfChannelGroup:
+      allOf:
+        - $ref: "#/components/schemas/GroupSettingValue"
+        - description: |
+            A [group-setting value][setting-values] defining the set of users
+            who have permission to move messages out of this channel.
+
+            Note that a user must [have content access](/help/channel-permissions) to a
+            channel in order to move messages out of the channel.
+
+            Channel administrators and users present in the organization-level
+            `can_move_messages_between_channels_group` setting can always move messages
+            out of the channel if they [have content access](/help/channel-permissions) to
+            the channel.
+
+            **Changes**: New in Zulip 11.0 (feature level 396). Prior to this
+            change, only the users in `can_move_messages_between_channels_group` were able
+            move messages between channels.
+
+            [setting-values]: /api/group-setting-values
+    CanMoveMessagesWithinChannelGroup:
+      allOf:
+        - $ref: "#/components/schemas/GroupSettingValue"
+        - description: |
+            A [group-setting value][setting-values] defining the set of users
+            who have permission to move messages within this channel.
+
+            Note that a user must [have content access](/help/channel-permissions) to a
+            channel in order to move messages within the channel.
+
+            Channel administrators and users present in the organization-level
+            `can_move_messages_between_topics_group` setting can always move messages
+            within the channel if they [have content access](/help/channel-permissions) to
+            the channel.
+
+            **Changes**: New in Zulip 11.0 (feature level 396). Prior to this
+            change, only the users in `can_move_messages_between_topics_group` were able
+            move messages between topics of a channel.
 
             [setting-values]: /api/group-setting-values
     CanSendMessageGroup:

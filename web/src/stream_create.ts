@@ -8,12 +8,14 @@ import render_change_stream_info_modal from "../templates/stream_settings/change
 import * as channel from "./channel.ts";
 import * as confirm_dialog from "./confirm_dialog.ts";
 import * as dialog_widget from "./dialog_widget.ts";
+import type {DropdownWidget} from "./dropdown_widget.ts";
 import {$t, $t_html} from "./i18n.ts";
 import * as keydown_util from "./keydown_util.ts";
 import * as loading from "./loading.ts";
 import * as onboarding_steps from "./onboarding_steps.ts";
-import * as resize from "./resize.ts";
+import {page_params} from "./page_params.ts";
 import * as settings_components from "./settings_components.ts";
+import * as settings_config from "./settings_config.ts";
 import * as settings_data from "./settings_data.ts";
 import {current_user, realm} from "./state_data.ts";
 import * as stream_create_subscribers from "./stream_create_subscribers.ts";
@@ -31,6 +33,8 @@ let created_stream: string | undefined;
 // Default is true since the current user is added to
 // the subscribers list initially.
 let current_user_subscribed_to_created_stream = true;
+
+let folder_widget: DropdownWidget | undefined;
 
 export function reset_created_stream(): void {
     created_stream = undefined;
@@ -72,6 +76,8 @@ export function maybe_update_error_message(): void {
 const group_setting_widget_map = new Map<string, GroupSettingPillContainer | null>([
     ["can_add_subscribers_group", null],
     ["can_administer_channel_group", null],
+    ["can_move_messages_out_of_channel_group", null],
+    ["can_move_messages_within_channel_group", null],
     ["can_remove_subscribers_group", null],
     ["can_send_message_group", null],
 ]);
@@ -383,7 +389,9 @@ function create_stream(): void {
         text: $t({defaultMessage: "Creating channel..."}),
     });
 
-    const data = {
+    const topics_policy = $("#id_new_topics_policy").val();
+
+    const data: Record<string, string> = {
         subscriptions,
         is_web_public: JSON.stringify(is_web_public),
         invite_only: JSON.stringify(invite_only),
@@ -391,9 +399,20 @@ function create_stream(): void {
         is_default_stream: JSON.stringify(default_stream),
         message_retention_days: JSON.stringify(message_retention_selection),
         announce: JSON.stringify(announce),
+        topics_policy: JSON.stringify(topics_policy),
         principals,
         ...group_setting_values,
     };
+
+    if (page_params.development_environment) {
+        assert(folder_widget !== undefined);
+        const folder_id = folder_widget.value();
+        if (folder_id !== settings_config.no_folder_selected) {
+            // We do not include "folder_id" in request data if
+            // new stream will not be added to any folder.
+            data.folder_id = JSON.stringify(folder_id);
+        }
+    }
 
     // Subscribe yourself and possible other people to a new stream.
     void channel.post({
@@ -436,7 +455,7 @@ function create_stream(): void {
     });
 }
 
-export function new_stream_clicked(stream_name: string): void {
+export function new_stream_clicked(stream_name: string, folder_id: number | undefined): void {
     // this changes the tab switcher (settings/preview) which isn't necessary
     // to a add new stream title.
     stream_settings_components.show_subs_pane.create_stream();
@@ -446,6 +465,11 @@ export function new_stream_clicked(stream_name: string): void {
         $("#create_stream_name").val(stream_name);
     }
     show_new_stream_modal();
+    if (folder_id) {
+        folder_widget!.render(folder_id);
+    } else {
+        folder_widget!.render(-1);
+    }
     $("#create_stream_name").trigger("focus");
 }
 
@@ -459,7 +483,6 @@ export function show_new_stream_modal(): void {
     $("#stream-creation").removeClass("hide");
     $(".right .settings").hide();
     stream_ui_updates.hide_or_disable_stream_privacy_options_if_required($("#stream-creation"));
-    resize.resize_settings_creation_overlay();
 
     stream_create_subscribers.build_widgets();
 
@@ -514,6 +537,11 @@ export function show_new_stream_modal(): void {
         true,
         true,
     );
+
+    $("#id_new_topics_policy").val(settings_config.get_stream_topics_policy_values().inherit.code);
+    if (!stream_data.user_can_set_topics_policy()) {
+        $("#id_new_topics_policy").prop("disabled", true);
+    }
 
     // set default state for "announce stream" and "default stream" option.
     $("#stream_creation_form .default-stream input").prop("checked", false);
@@ -621,6 +649,7 @@ export function set_up_handlers(): void {
 
     set_up_group_setting_widgets();
     settings_components.enable_opening_typeahead_on_clicking_label($container);
+    folder_widget = settings_components.set_up_folder_dropdown_widget();
 }
 
 export function initialize(): void {

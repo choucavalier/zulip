@@ -8,10 +8,12 @@ import render_information_density_update_button_tooltip from "../templates/infor
 import render_org_logo_tooltip from "../templates/org_logo_tooltip.hbs";
 import render_tooltip_templates from "../templates/tooltip_templates.hbs";
 
+import * as compose_validate from "./compose_validate.ts";
 import {$t} from "./i18n.ts";
 import * as information_density from "./information_density.ts";
 import * as people from "./people.ts";
 import * as settings_config from "./settings_config.ts";
+import {realm} from "./state_data.ts";
 import * as stream_data from "./stream_data.ts";
 import * as ui_util from "./ui_util.ts";
 import {user_settings} from "./user_settings.ts";
@@ -256,6 +258,20 @@ export function initialize(): void {
         appendTo: () => document.body,
     });
 
+    tippy.delegate("body", {
+        target: ".add-task-wrapper",
+        onShow(instance) {
+            const $elem = $(instance.reference);
+            const content = $elem.attr("data-tippy-content");
+            if (content === undefined) {
+                return false;
+            }
+            instance.setContent(content);
+            return undefined;
+        },
+        appendTo: () => document.body,
+    });
+
     $("body").on(
         "blur",
         ".message_control_button, .delete-selected-drafts-button-container",
@@ -271,7 +287,6 @@ export function initialize(): void {
         target: [
             "#scroll-to-bottom-button-clickable-area",
             ".spectator_narrow_login_button",
-            "#stream-specific-notify-table .unmute_stream",
             ".error-icon-message-recipient .zulip-icon",
             "#personal-menu-dropdown .status-circle",
             ".popover-group-menu-member-list .popover-group-menu-user-presence",
@@ -770,6 +785,22 @@ export function initialize(): void {
     });
 
     tippy.delegate("body", {
+        target: ".delete-option",
+        delay: LONG_HOVER_DELAY,
+        appendTo: () => document.body,
+        placement: "top",
+        onShow(instance) {
+            /* Ensure the tooltip remains visible even when data-reference-hidden is set. */
+            $(instance.popper).find(".tippy-box").addClass("show-when-reference-hidden");
+
+            instance.setContent($t({defaultMessage: "Delete"}));
+        },
+        onHidden(instance) {
+            instance.destroy();
+        },
+    });
+
+    tippy.delegate("body", {
         target: [
             "#personal-menu-dropdown .info-density-button-container",
             "#user-preferences .info-density-button-container",
@@ -792,6 +823,49 @@ export function initialize(): void {
                     render_information_density_update_button_tooltip(tooltip_context),
                 ),
             );
+        },
+        onHidden(instance) {
+            instance.destroy();
+        },
+    });
+
+    tippy.delegate("body", {
+        target: ".topic-edit-save-wrapper",
+        onShow(instance) {
+            const $elem = $(instance.reference);
+            if ($($elem).find(".topic_edit_save").prop("disabled")) {
+                const error_message = compose_validate.get_topics_required_error_message_html();
+                instance.setContent(ui_util.parse_html(error_message));
+                // `display: flex` doesn't show the tooltip content inline when <i>general chat</i>
+                // is in the error message.
+                $(instance.popper).find(".tippy-content").css("display", "block");
+                return undefined;
+            }
+            instance.destroy();
+            return false;
+        },
+        appendTo: () => document.body,
+        onHidden(instance) {
+            instance.destroy();
+        },
+    });
+
+    tippy.delegate("body", {
+        target: ".send_notification_to_new_subscribers_container.control-label-disabled",
+        trigger: "mouseenter",
+        placement: "top",
+        appendTo: () => document.body,
+        onShow(instance) {
+            const content = $t(
+                {
+                    defaultMessage:
+                        "Notification message cannot be sent when subscribing more than {max_users} users.",
+                },
+                {
+                    max_users: realm.max_bulk_new_subscription_messages,
+                },
+            );
+            instance.setContent(content);
         },
         onHidden(instance) {
             instance.destroy();

@@ -49,6 +49,8 @@ const realm_icon = mock_esm("../src/realm_icon");
 const realm_logo = mock_esm("../src/realm_logo");
 const realm_playground = mock_esm("../src/realm_playground");
 const reload = mock_esm("../src/reload");
+const message_reminder = mock_esm("../src/message_reminder");
+const reminders_overlay_ui = mock_esm("../src/reminders_overlay_ui");
 const saved_snippets = mock_esm("../src/saved_snippets");
 const saved_snippets_ui = mock_esm("../src/saved_snippets_ui");
 const scheduled_messages = mock_esm("../src/scheduled_messages");
@@ -89,6 +91,7 @@ const submessage = mock_esm("../src/submessage");
 mock_esm("../src/left_sidebar_navigation_area", {
     update_starred_count() {},
     update_scheduled_messages_row() {},
+    update_reminders_row() {},
     handle_home_view_changed() {},
 });
 const typing_events = mock_esm("../src/typing_events");
@@ -137,6 +140,7 @@ page_params.test_suite = false;
 
 // For data-oriented modules, just use them, don't stub them.
 const alert_words = zrequire("alert_words");
+const channel_folders = zrequire("channel_folders");
 const emoji = zrequire("emoji");
 const message_store = zrequire("message_store");
 const people = zrequire("people");
@@ -452,6 +456,30 @@ run_test("reaction", ({override}) => {
     }
 });
 
+run_test("reminders", ({override}) => {
+    override(reminders_overlay_ui, "rerender", noop);
+    override(reminders_overlay_ui, "remove_reminder_id", noop);
+
+    let event = event_fixtures.reminders__add;
+    {
+        const stub = make_stub();
+        override(message_reminder, "add_reminders", stub.f);
+        dispatch(event);
+        assert.equal(stub.num_calls, 1);
+        const args = stub.get_args("reminders");
+        assert_same(args.reminders, event.reminders);
+    }
+    event = event_fixtures.reminders__remove;
+    {
+        const stub = make_stub();
+        override(message_reminder, "remove_reminder", stub.f);
+        dispatch(event);
+        assert.equal(stub.num_calls, 1);
+        const args = stub.get_args("reminder_id");
+        assert_same(args.reminder_id, event.reminder_id);
+    }
+});
+
 run_test("scheduled_messages", ({override}) => {
     override(scheduled_messages_overlay_ui, "rerender", noop);
     override(scheduled_messages_overlay_ui, "remove_scheduled_message_id", noop);
@@ -487,6 +515,23 @@ run_test("scheduled_messages", ({override}) => {
     }
 });
 
+run_test("channel_folders", () => {
+    channel_folders.initialize({channel_folders: []});
+
+    const event = event_fixtures.channel_folder__add;
+    {
+        dispatch(event);
+
+        const folders = channel_folders.get_channel_folders();
+        assert.equal(folders.length, 1);
+        assert.equal(folders[0].id, event.channel_folder.id);
+        assert.equal(folders[0].name, event.channel_folder.name);
+    }
+
+    blueslip.expect("error", "Unexpected event type channel_folder/other");
+    server_events_dispatch.dispatch_normal_event({type: "channel_folder", op: "other"});
+});
+
 run_test("realm settings", ({override}) => {
     override(current_user, "is_admin", true);
     override(realm, "realm_date_created", new Date("2023-01-01Z"));
@@ -500,7 +545,7 @@ run_test("realm settings", ({override}) => {
     override(gear_menu, "rerender", noop);
     override(narrow_title, "redraw_title", noop);
     override(navbar_alerts, "toggle_organization_profile_incomplete_banner", noop);
-    override(compose_recipient, "update_topic_inputbox_on_mandatory_topics_change", noop);
+    override(compose_recipient, "update_topic_inputbox_on_topics_policy_change", noop);
     override(compose_recipient, "update_compose_area_placeholder_text", noop);
     override(compose_recipient, "check_posting_policy_for_compose_box", noop);
 
@@ -537,9 +582,6 @@ run_test("realm settings", ({override}) => {
         assert_same(val, "new_realm_name");
     });
     assert_same(realm.realm_name, "new_realm_name");
-
-    event = event_fixtures.realm__update__mandatory_topics;
-    test_realm_boolean(event, "realm_mandatory_topics");
 
     event = event_fixtures.realm__update__org_type;
     dispatch(event);
@@ -599,6 +641,7 @@ run_test("realm settings", ({override}) => {
     override(realm, "realm_can_move_messages_between_topics_group", 1);
     override(realm, "realm_can_move_messages_between_topics_group", 5);
     override(realm, "realm_direct_message_permission_group", 1);
+    override(realm, "realm_topics_policy", "allow_empty_topic");
     override(realm, "realm_plan_type", 2);
     override(realm, "realm_upload_quota_mib", 5000);
     override(realm, "max_file_upload_size_mib", 10);
@@ -637,6 +680,7 @@ run_test("realm settings", ({override}) => {
     assert_same(realm.realm_can_move_messages_between_topics_group, 3);
     assert_same(realm.realm_can_resolve_topics_group, 1);
     assert_same(realm.realm_direct_message_permission_group, 3);
+    assert_same(realm.realm_topics_policy, "disable_empty_topic");
     assert_same(realm.realm_plan_type, 3);
     assert_same(realm.realm_upload_quota_mib, 50000);
     assert_same(realm.max_file_upload_size_mib, 1024);
@@ -1183,6 +1227,12 @@ run_test("user_settings", ({override}) => {
     override(user_settings, "starred_message_counts", false);
     dispatch(event);
     assert_same(user_settings.starred_message_counts, true);
+
+    event = event_fixtures.user_settings__web_left_sidebar_unreads_count_summary;
+    override(sidebar_ui, "update_unread_counts_visibility", noop);
+    override(user_settings, "web_left_sidebar_unreads_count_summary", true);
+    dispatch(event);
+    assert_same(user_settings.web_left_sidebar_unreads_count_summary, false);
 
     event = event_fixtures.user_settings__receives_typing_notifications;
     override(user_settings, "receives_typing_notifications", false);

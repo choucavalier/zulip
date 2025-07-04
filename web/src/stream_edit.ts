@@ -10,6 +10,7 @@ import render_inline_decorated_channel_name from "../templates/inline_decorated_
 import render_change_stream_info_modal from "../templates/stream_settings/change_stream_info_modal.hbs";
 import render_confirm_stream_privacy_change_modal from "../templates/stream_settings/confirm_stream_privacy_change_modal.hbs";
 import render_copy_email_address_modal from "../templates/stream_settings/copy_email_address_modal.hbs";
+import render_create_channel_folder_modal from "../templates/stream_settings/create_channel_folder_modal.hbs";
 import render_stream_description from "../templates/stream_settings/stream_description.hbs";
 import render_stream_settings from "../templates/stream_settings/stream_settings.hbs";
 
@@ -17,6 +18,7 @@ import * as blueslip from "./blueslip.ts";
 import type {Bot} from "./bot_data.ts";
 import * as browser_history from "./browser_history.ts";
 import * as channel from "./channel.ts";
+import * as channel_folders from "./channel_folders.ts";
 import * as confirm_dialog from "./confirm_dialog.ts";
 import {show_copied_confirmation} from "./copied_tooltip.ts";
 import * as dialog_widget from "./dialog_widget.ts";
@@ -24,6 +26,7 @@ import * as dropdown_widget from "./dropdown_widget.ts";
 import {$t, $t_html} from "./i18n.ts";
 import * as keydown_util from "./keydown_util.ts";
 import * as narrow_state from "./narrow_state.ts";
+import {page_params} from "./page_params.ts";
 import type {User} from "./people.ts";
 import * as people from "./people.ts";
 import * as popovers from "./popovers.ts";
@@ -32,6 +35,7 @@ import * as scroll_util from "./scroll_util.ts";
 import * as settings_components from "./settings_components.ts";
 import * as settings_config from "./settings_config.ts";
 import * as settings_data from "./settings_data.ts";
+import * as settings_notifications from "./settings_notifications.ts";
 import * as settings_org from "./settings_org.ts";
 import type {CurrentUser} from "./state_data.ts";
 import {current_user, realm} from "./state_data.ts";
@@ -39,7 +43,6 @@ import * as stream_data from "./stream_data.ts";
 import * as stream_edit_subscribers from "./stream_edit_subscribers.ts";
 import * as stream_edit_toggler from "./stream_edit_toggler.ts";
 import * as stream_settings_api from "./stream_settings_api.ts";
-import type {SubData} from "./stream_settings_api.ts";
 import * as stream_settings_components from "./stream_settings_components.ts";
 import * as stream_settings_containers from "./stream_settings_containers.ts";
 import * as stream_settings_data from "./stream_settings_data.ts";
@@ -262,6 +265,7 @@ export function show_settings_for(node: HTMLElement): void {
         other_settings,
         stream_privacy_policy_values: settings_config.stream_privacy_policy_values,
         stream_privacy_policy: stream_data.get_stream_privacy_policy(stream_id),
+        stream_topics_policy_values: settings_config.get_stream_topics_policy_values(),
         check_default_stream: stream_data.is_default_stream_id(stream_id),
         zulip_plan_is_not_limited: realm.zulip_plan_is_not_limited,
         upgrade_text_for_wide_organization_logo: realm.upgrade_text_for_wide_organization_logo,
@@ -272,6 +276,8 @@ export function show_settings_for(node: HTMLElement): void {
         can_access_stream_email: stream_data.can_access_stream_email(sub),
         group_setting_labels: settings_config.all_group_setting_labels.stream,
         has_billing_access: settings_data.user_has_billing_access(),
+        is_development_environment: page_params.development_environment,
+        empty_string_topic_display_name: util.get_final_topic_display_name(""),
     });
     scroll_util.get_content_element($("#stream_settings")).html(html);
 
@@ -282,6 +288,7 @@ export function show_settings_for(node: HTMLElement): void {
 
     $(".nothing-selected").hide();
     $("#subscription_overlay .stream_change_property_info").hide();
+    $("#id_topics_policy").val(sub.topics_policy);
 
     $edit_container.addClass("show");
 
@@ -291,6 +298,7 @@ export function show_settings_for(node: HTMLElement): void {
     stream_ui_updates.enable_or_disable_permission_settings_in_edit_panel(sub);
     setup_group_setting_widgets(slim_sub);
     stream_ui_updates.update_can_subscribe_group_label($edit_container);
+    settings_components.set_up_folder_dropdown_widget(sub);
 
     $("#channels_overlay_container").on(
         "click",
@@ -313,25 +321,6 @@ export function update_muting_rendering(sub: StreamSubscription): void {
 
     $is_muted_checkbox.prop("checked", sub.is_muted);
     $edit_container.find(".mute-note").toggleClass("hide-mute-note", !sub.is_muted);
-}
-
-function stream_notification_reset(elem: HTMLElement): void {
-    const sub = get_sub_for_target(elem);
-    const data: SubData = [{stream_id: sub.stream_id, property: "is_muted", value: false}];
-    for (const [per_stream_setting_name, global_setting_name] of Object.entries(
-        settings_config.generalize_stream_notification_setting,
-    )) {
-        data.push({
-            stream_id: sub.stream_id,
-            property: settings_labels_schema.parse(per_stream_setting_name),
-            value: user_settings[global_setting_name],
-        });
-    }
-
-    stream_settings_api.bulk_set_stream_property(
-        data,
-        $(elem).closest(".subsection-parent").find(".alert-notification"),
-    );
 }
 
 function stream_setting_changed(elem: HTMLInputElement): void {
@@ -513,6 +502,11 @@ function show_stream_email_address_modal(address: string, sub: StreamSubscriptio
 
     const email_address_clipboard = new ClipboardJS(
         "#copy_email_address_modal .copy-email-address",
+        {
+            text() {
+                return $(".email-address").text();
+            },
+        },
     );
     email_address_clipboard.on("success", (e) => {
         assert(e.trigger instanceof HTMLElement);
@@ -572,7 +566,7 @@ export function initialize(): void {
         },
     );
 
-    $("#channels_overlay_container").on("keypress", "#change_stream_description", (e) => {
+    $("#channels_overlay_container").on("keydown", "#change_stream_description", (e) => {
         // Stream descriptions cannot be multiline, so disable enter key
         // to prevent new line
         if (keydown_util.is_enter_event(e)) {
@@ -665,7 +659,8 @@ export function initialize(): void {
         "click",
         ".subsection-parent .reset-stream-notifications-button",
         function on_click(this: HTMLElement) {
-            stream_notification_reset(this);
+            const sub = get_sub_for_target(this);
+            settings_notifications.do_reset_stream_notifications(this, sub);
         },
     );
 
@@ -919,4 +914,58 @@ export function initialize(): void {
             }
         },
     );
+
+    $("#channels_overlay_container").on("click", ".create-channel-folder-button", () => {
+        const html_body = render_create_channel_folder_modal({
+            max_channel_folder_name_length: channel_folders.MAX_CHANNEL_FOLDER_NAME_LENGTH,
+            max_channel_folder_description_length:
+                channel_folders.MAX_CHANNEL_FOLDER_DESCRIPTION_LENGTH,
+        });
+
+        function create_channel_folder(): void {
+            const close_on_success = true;
+            const data = {
+                name: $<HTMLInputElement>("input#new_channel_folder_name").val()!.trim(),
+                description: $<HTMLTextAreaElement>("textarea#new_channel_folder_description")
+                    .val()!
+                    .trim(),
+            };
+            dialog_widget.submit_api_request(
+                channel.post,
+                "/json/channel_folders/create",
+                data,
+                {
+                    success_continuation(response_data) {
+                        const id = z
+                            .object({channel_folder_id: z.number()})
+                            .parse(response_data).channel_folder_id;
+                        // This is a temporary channel folder object added
+                        // to channel folders data, so that the folder is
+                        // immediately visible in the dropdown.
+                        // This will be replaced with the actual object once
+                        // the client receives channel_folder/add event.
+                        const channel_folder = {
+                            id,
+                            name: data.name,
+                            description: data.description,
+                            is_archived: false,
+                            rendered_description: "",
+                            date_created: 0,
+                            creator_id: people.my_current_user_id(),
+                        };
+                        channel_folders.add(channel_folder);
+                    },
+                },
+                close_on_success,
+            );
+        }
+        dialog_widget.launch({
+            html_heading: $t_html({defaultMessage: "Create channel folder"}),
+            html_body,
+            id: "create_channel_folder",
+            html_submit_button: $t_html({defaultMessage: "Create"}),
+            on_click: create_channel_folder,
+            loading_spinner: true,
+        });
+    });
 }

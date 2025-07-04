@@ -110,6 +110,8 @@ const deactivated_group = {
     members: new Set([1, 2, 3]),
     is_system_group: false,
     direct_subgroup_ids: new Set([4, 5, 6]),
+    can_add_members_group: 4,
+    can_remove_members_group: 4,
     can_join_group: 1,
     can_leave_group: 1,
     can_manage_group: 1,
@@ -436,8 +438,8 @@ function test_user_group_permission_setting(override, setting_name, permission_f
     override(current_user, "user_id", 2);
     assert.ok(permission_func(students.id));
 
-    // Cannot perform any join, leave, add, remove if group is deactivated
-    assert.ok(!permission_func(deactivated_group.id));
+    // Can perform any join, leave, add, remove even if the group is deactivated
+    assert.ok(permission_func(deactivated_group.id));
 }
 
 run_test("can_join_user_group", ({override}) => {
@@ -558,6 +560,10 @@ run_test("user_can_access_all_other_users", ({override}) => {
 
     page_params.is_spectator = false;
     override(current_user, "user_id", member_user_id);
+    override(current_user, "is_guest", false);
+    assert.ok(settings_data.user_can_access_all_other_users());
+    override(current_user, "is_guest", true);
+    // For coverage only: Here the is_guest optimization is skipped.
     assert.ok(settings_data.user_can_access_all_other_users());
 
     override(current_user, "user_id", guest_user_id);

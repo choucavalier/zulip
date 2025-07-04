@@ -32,12 +32,13 @@ whereas [archiving a channel](/help/archive-a-channel) does not.
 
 {tab|mobile}
 
-{!topic-long-press-menu.md!}
+Access this feature by following the web app instructions in your
+mobile device browser.
 
-1. Tap **Delete topic**.
-1. Approve by tapping **DELETE TOPIC**.
-
-{!topic-long-press-menu-tip.md!}
+Implementation of this feature in the mobile app is tracked [on
+GitHub](https://github.com/zulip/zulip-flutter/issues/1549). If
+you're interested in this feature, please react to the issue's
+description with 👍.
 
 {end_tabs}
 

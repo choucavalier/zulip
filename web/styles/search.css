@@ -266,6 +266,16 @@
                can contain multiple user pills that wrap onto
                new lines. */
             height: unset;
+            border: 1px solid transparent;
+
+            /* Not focus-visible, because we want to support mouse+backpace
+               to delete pills */
+            &:focus {
+                /* Unlike regular `.pill` this multi-user pill has a border,
+                   so we use border instead of box-shadow on focus. */
+                box-shadow: none;
+                border-color: var(--color-focus-outline-input-pill);
+            }
 
             > .pill-label {
                 min-width: fit-content;
@@ -294,11 +304,20 @@
                 min-width: 4.5em;
                 display: grid;
                 grid-template-columns:
-                    var(--length-input-pill-image) minmax(0, 1fr)
+                    var(--length-search-input-pill-image) minmax(0, 1fr)
                     var(--length-input-pill-exit);
                 align-content: center;
                 /* Don't inherit large line-height for user pills themselves, either. */
                 line-height: 1.1;
+
+                .pill-image {
+                    height: var(--length-search-input-pill-image);
+                    width: var(--length-search-input-pill-image);
+                }
+
+                .pill-image-border {
+                    border: none;
+                }
 
                 &:not(.deactivated-pill) {
                     background-color: var(--color-background-user-pill);

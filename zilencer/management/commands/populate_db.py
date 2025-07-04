@@ -21,6 +21,7 @@ from django.utils.timezone import now as timezone_now
 from typing_extensions import override
 
 from scripts.lib.zulip_tools import get_or_create_dev_uuid_var_path
+from zerver.actions.channel_folders import check_add_channel_folder
 from zerver.actions.create_realm import do_create_realm
 from zerver.actions.custom_profile_fields import (
     do_update_user_custom_profile_data_if_changed,
@@ -1037,8 +1038,15 @@ class Command(ZulipBaseCommand):
                 admins_system_group = NamedUserGroup.objects.get(
                     name=SystemGroups.ADMINISTRATORS, realm=zulip_realm, is_system_group=True
                 )
+
+                channel_folder = check_add_channel_folder(
+                    zulip_realm,
+                    "Engineering",
+                    "For convenient *channel folder* testing! :octopus:",
+                    acting_user=iago,
+                )
                 zulip_stream_dict: dict[str, dict[str, Any]] = {
-                    "devel": {"description": "For developing"},
+                    "devel": {"description": "For developing", "folder_id": channel_folder.id},
                     # ビデオゲーム - VideoGames (japanese)
                     "ビデオゲーム": {
                         "description": f"Share your favorite video games!  {raw_emojis[2]}",
@@ -1051,8 +1059,8 @@ class Command(ZulipBaseCommand):
                     "design": {"description": "For design", "creator": hamlet},
                     "support": {"description": "For support"},
                     "social": {"description": "For socializing"},
-                    "test": {"description": "For testing `code`"},
-                    "errors": {"description": "For errors"},
+                    "test": {"description": "For testing `code`", "folder_id": channel_folder.id},
+                    "errors": {"description": "For errors", "folder_id": channel_folder.id},
                     # 조리법 - Recipes (Korean), Пельмени - Dumplings (Russian)
                     "조리법 " + raw_emojis[0]: {
                         "description": "Everything cooking, from pasta to Пельмени"
@@ -1263,7 +1271,7 @@ def generate_and_send_messages(
             # Use an old recipient
             recipient_type, recipient_id, saved_data = recipients[num_messages - 1]
             if recipient_type == Recipient.PERSONAL:
-                personals_pair = saved_data["personals_pair"]
+                personals_pair = list(saved_data["personals_pair"])
                 random.shuffle(personals_pair)
             elif recipient_type == Recipient.STREAM:
                 message.subject = saved_data["subject"]
@@ -1280,7 +1288,7 @@ def generate_and_send_messages(
             / 100.0
         ):
             recipient_type = Recipient.PERSONAL
-            personals_pair = random.choice(personals_pairs)
+            personals_pair = list(random.choice(personals_pairs))
             random.shuffle(personals_pair)
         elif randkey <= random_max * 1.0:
             recipient_type = Recipient.STREAM
@@ -1289,11 +1297,13 @@ def generate_and_send_messages(
         if recipient_type == Recipient.DIRECT_MESSAGE_GROUP:
             sender_id = random.choice(direct_message_group_members[message.recipient.id])
             message.sender = get_user_profile_by_id(sender_id)
+            message.subject = Message.DM_TOPIC
         elif recipient_type == Recipient.PERSONAL:
             message.recipient = Recipient.objects.get(
                 type=Recipient.PERSONAL, type_id=personals_pair[0]
             )
             message.sender = get_user_profile_by_id(personals_pair[1])
+            message.subject = Message.DM_TOPIC
             saved_data["personals_pair"] = personals_pair
         elif recipient_type == Recipient.STREAM:
             # Pick a random subscriber to the stream

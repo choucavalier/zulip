@@ -4,6 +4,8 @@ import os
 import re
 import shutil
 import sys
+from textwrap import indent
+from typing import TypedDict
 
 import django
 from django.template import engines
@@ -19,6 +21,35 @@ setup_path()
 
 os.environ["DJANGO_SETTINGS_MODULE"] = "zproject.settings"
 django.setup()
+
+from zerver.lib.markdown.tabbed_sections import generate_content_blocks, parse_tabs
+
+INDENT_SPACES = "    "
+SETTINGS_LINK_PATTERN = re.compile(r"{settings_tab\|(?P<setting_identifier>.*?)}")
+RELATIVE_LINKS_PATTERN = re.compile(r"\{relative\|(?P<link_type>.*?)\|(?P<key>.*?)\}")
+
+# TODO list before cutover.
+#
+# 1. We are not inserting FlattenList component for files with !!! tip components,
+#    since we need to do it inside the include file. There are 4 such files at
+#    the time of writing this comment. is_include_only_ordered_list makes sure of
+#    that. We can do the conversion for it manually during cutover or in a
+#    followup PR.
+# 2. Before cutover we should also check for ordered list items that do not start
+#    with `1. ` since our conversion script assumes that every item list starts
+#    with `1. `. The regex we used to check for this was `\b(?!1\.)\d+\. `.
+# 3. Before cutover, we should check for unindented pieces of text in ordered list
+#    items. Our script only works with indented pieces of text. The regex we used
+#    to check for this was `^1\. .*\n(?!\n)(?!1\.)( {0,1}\S.*)`.
+
+
+class IncludeFileInfo(TypedDict):
+    is_only_ordered_list: bool
+
+
+def convert_kebab_to_pascal(text: str) -> str:
+    # to_pascal is a function for converting snake case to pascal.
+    return to_pascal(text).replace("-", "")
 
 
 def replace_emoticon_translation_table(markdown_string: str, import_statement_set: set[str]) -> str:
@@ -40,6 +71,35 @@ def replace_emoticon_translation_table(markdown_string: str, import_statement_se
     return result
 
 
+def replace_setting_links(
+    markdown_string: str, import_statement_set: set[str], import_relative_base_path: str
+) -> str:
+    setting_links_pattern = re.compile(r"{settings_tab\|(?P<setting_identifier>.*?)}")
+
+    def replace_setting_links_match(match: re.Match[str]) -> str:
+        import_statement_set.add(
+            f'import NavigationSteps from "{import_relative_base_path}/NavigationSteps.astro"'
+        )
+        setting_identifier = match.group("setting_identifier")
+        return f'<NavigationSteps identifier="settings/{setting_identifier}" />'
+
+    return setting_links_pattern.sub(replace_setting_links_match, markdown_string)
+
+
+def replace_relative_links(
+    markdown_string: str, import_statement_set: set[str], import_relative_base_path: str
+) -> str:
+    def replace_relative_links_match(match: re.Match[str]) -> str:
+        import_statement_set.add(
+            f'import NavigationSteps from "{import_relative_base_path}/NavigationSteps.astro"'
+        )
+        link_type = match.group("link_type")
+        key = match.group("key")
+        return f'<NavigationSteps identifier="relative/{link_type}/{key}" />'
+
+    return RELATIVE_LINKS_PATTERN.sub(replace_relative_links_match, markdown_string)
+
+
 def replace_image_path(markdown_string: str, replacement_path: str) -> str:
     """
     We will point to the existing image folder till
@@ -58,19 +118,20 @@ def replace_image_path(markdown_string: str, replacement_path: str) -> str:
 def fix_file_imports(
     markdown_string: str, import_statement_set: set[str], import_relative_base_path: str
 ) -> str:
-    def convert_to_pascal(text: str) -> str:
-        return to_pascal(text).replace("-", "").replace(".Md", "")
+    def get_pascal_filename_without_extension(match_string: str) -> str:
+        return convert_kebab_to_pascal(os.path.basename(match_string).split(".")[0])
 
     def convert_to_astro_tag(match: re.Match[str]) -> str:
-        return "<" + convert_to_pascal(match.group(1)) + " />"
+        return "<" + get_pascal_filename_without_extension(match.group(1)) + " />"
 
     RE = re.compile(r"^ {,3}\{!([^!]+)!\} *$", re.MULTILINE)
     result = RE.sub(convert_to_astro_tag, markdown_string)
     matches = RE.findall(markdown_string)
 
-    for match in matches:
+    for match_string in matches:
+        pascal_filename = get_pascal_filename_without_extension(match_string)
         import_statement_set.add(
-            f'import {convert_to_pascal(match)} from "{import_relative_base_path}/_{match}x"'
+            f'import {pascal_filename} from "{import_relative_base_path}/_{pascal_filename}.mdx"'
         )
 
     return result
@@ -145,6 +206,70 @@ def replace_icons(markdown_string: str, import_statement_set: set[str]) -> str:
     return result
 
 
+def convert_comments(markdown_string: str) -> str:
+    return markdown_string.replace("<!--", "{/*").replace("-->", "*/}")
+
+
+def convert_tab_syntax(markdown_string: str, import_statement_set: set[str]) -> str:
+    """
+    Convert our custom tab syntax to relevant MDX equivalent.
+    This function is inspired from `tabbed_section.py`'s run method.
+    """
+    TABBED_SECTION_TEMPLATE = """<Tabs>
+{blocks}
+</Tabs>"""
+
+    TAB_ITEM_TEMPLATE = """<TabItem label="{tab_label}">
+{content}
+</TabItem>"""
+
+    def indent_content_inside_blocks(content_block: str) -> str:
+        """
+        The original function `generate_content_blocks` does no
+        indenting, and we need the content in between our TabItems
+        to be indented. This is bit of string manipulation, but it
+        is a better alternative compared to duplicating the original
+        function here just to indent.
+        """
+        content_block_lines = content_block.splitlines()
+        result_lines = []
+        for line in content_block_lines:
+            if line.startswith(("<TabItem", "</TabItem>")):
+                result_lines.append(line)
+            else:
+                result_lines.append(INDENT_SPACES + line)
+
+        return "\n".join(result_lines)
+
+    lines = markdown_string.splitlines()
+    tab_section = parse_tabs(lines)
+    while tab_section:
+        if "tabs" in tab_section:
+            content_blocks = generate_content_blocks(tab_section, lines, TAB_ITEM_TEMPLATE)
+            content_blocks = indent_content_inside_blocks(content_blocks)
+            content_blocks = indent(content_blocks, INDENT_SPACES)
+            tabs_mdx = TABBED_SECTION_TEMPLATE.format(blocks=content_blocks)
+            import_statement_set.add(
+                "import { Tabs, TabItem } from '@astrojs/starlight/components'"
+            )
+        else:
+            # This is the case where we don't have any tabs but we were
+            # using the `start_tabs` and `end_tabs` syntax to create
+            # a border around the instructions. We just put the content
+            # as is in this case since we don't want to add that border
+            # anymore.
+            tabs_mdx = ("\n").join(
+                lines[(tab_section["start_tabs_index"] + 1) : (tab_section["end_tabs_index"])]
+            )
+
+        start = tab_section["start_tabs_index"]
+        end = tab_section["end_tabs_index"] + 1
+        lines = [*lines[:start], tabs_mdx, *lines[end:]]
+        tab_section = parse_tabs(lines)
+
+    return "\n".join(lines)
+
+
 def detab(text: str) -> tuple[str, str]:
     """
     Remove a tab from the front of each line of the given text.
@@ -164,6 +289,115 @@ def detab(text: str) -> tuple[str, str]:
         else:
             break
     return "\n".join(newtext), "\n".join(lines[len(newtext) :])
+
+
+def is_include_only_ordered_list(markdown_string: str) -> bool:
+    """
+    Check if a given markdown string is only an ordered list and does not
+    contain other components. After stripping down whitespace, the
+    string should start with `1.`. There can be a lot of other
+    components in the markdown string, but since we are running this
+    only on the include files, the only other component that we have there
+    for files starting with `1.` is a tip component.
+    """
+    markdown_string = markdown_string.strip()
+    return markdown_string.startswith("1.") and "!!!" not in markdown_string
+
+
+def is_line_part_of_an_ordered_list(line: str) -> bool:
+    """
+    Everywhere is our markdown, we use `1.` for our lists instead of
+    explicit numbers, so we only check for that here. A single item
+    in a list can be spread across multiple lines with some indentation.
+    So if the line starts with at least two spaces, we consider it part
+    of the list for this conversion script. Newlines can be part of a
+    list, so we return true for those too.
+    """
+    return line.startswith(("  ", "1.")) or line.strip() == ""
+
+
+def insert_flattened_steps_component(
+    markdown_string: str,
+    include_files_info: dict[str, IncludeFileInfo],
+    import_statement_set: set[str],
+    components_dir_path: str,
+) -> str:
+    """
+    We insert FlattenList components where include files
+    are being treated as part of ordered lists. Astro renders
+    included files as it's own component, which would result in
+    multiple ordered lists instead of a single list if we did
+    not use this component. See the astro component file itself
+    to know more how FlattenList works.
+
+    We are not inserting FlattenList components for files
+    with !!! tip components, since we need to do it inside the
+    include file. There are 4 such files at the time of writing
+    this comment. `is_include_only_ordered_list` makes sure of
+    that. We can do the conversion for it manually during cutover
+    or in a followup PR.
+    """
+    file_include_pattern = re.compile(r"^ {,3}\{!([^!]+)!\} *$", re.MULTILINE)
+    lines = markdown_string.splitlines()
+
+    def traverse_to_boundary(start: int, step: int) -> int:
+        index = start
+        while 0 <= index < len(lines):
+            line = lines[index]
+            if is_line_part_of_an_ordered_list(line):
+                index += step
+                continue
+            file_match = file_include_pattern.match(line)
+            if file_match:
+                filename = file_match.group(1)
+                if include_files_info[filename]["is_only_ordered_list"]:
+                    index += step
+                    continue
+            settings_link_match = SETTINGS_LINK_PATTERN.match(line)
+            relative_links_match = RELATIVE_LINKS_PATTERN.match(line)
+            if settings_link_match or relative_links_match:
+                index += step
+                continue
+            break
+        return index
+
+    # If a file with `is_only_ordered_list` set to True is followed
+    # immediately by a similar file with it set to true, our loop
+    # will try to insert the same text at the same position twice
+    # resulting in two opening <FlattenList> one after the other.
+    # Using a set avoids this problem.
+    insertions = set()
+
+    def insert_flatten_list(match: re.Match[str]) -> None:
+        match_line_index = markdown_string[: match.start()].count("\n")
+
+        upper_bound = traverse_to_boundary(match_line_index - 1, step=-1)
+        insertions.add((upper_bound + 1, "<FlattenList>"))
+
+        lower_bound = traverse_to_boundary(match_line_index + 1, step=1)
+        insertions.add((lower_bound, "</FlattenList>"))
+
+    for match in SETTINGS_LINK_PATTERN.finditer(markdown_string):
+        insert_flatten_list(match)
+
+    for match in RELATIVE_LINKS_PATTERN.finditer(markdown_string):
+        insert_flatten_list(match)
+
+    for match in file_include_pattern.finditer(markdown_string):
+        filename = match.group(1)
+        if not include_files_info[filename]["is_only_ordered_list"]:
+            continue
+        insert_flatten_list(match)
+
+    if insertions:
+        import_statement_set.add(
+            f"import FlattenList from '{components_dir_path}/FlattenList.astro';"
+        )
+        # Insert tags in reverse order to avoid index shifting
+        for index, tag in sorted(insertions, reverse=True):
+            lines.insert(index, tag)
+
+    return "\n".join(lines)
 
 
 def convert_admonitions_to_asides(
@@ -195,6 +429,7 @@ def convert_admonitions_to_asides(
             admonition_content, post_admonition_content_text = detab(
                 post_admonition_declaration_text
             )
+            admonition_content = indent(admonition_content, INDENT_SPACES)
 
             klass, title = get_admonition_class_and_title(match)
             # We ignore the title obtained above in each of the if
@@ -282,7 +517,7 @@ def get_markdown_string_from_file(markdown_file_path: str) -> str:
 
 
 def convert_help_center_file_to_mdx(
-    markdown_file_path: str,
+    markdown_file_path: str, include_files_info: dict[str, IncludeFileInfo]
 ) -> str:
     """
     Given a path to a Markdown file, return the equivalent MDX file.
@@ -292,13 +527,28 @@ def convert_help_center_file_to_mdx(
     # All imports inserted during conversion should be tracked here.
     import_statement_set: set[str] = set()
 
-    result = fix_file_imports(result, import_statement_set, "./include")
-    result = escape_curly_braces(result)
     result = fix_relative_path(result)
+    # We are not inserting FlattenList components for files
+    # with !!! tip components, since we need to do it inside the
+    # include file. We can do it during the cutover manually or
+    # in a followup PR.
+    # All unordered lists at the time of writing this comment are
+    # standalone components and we do not need to do any transformation
+    # for them.
+    result = insert_flattened_steps_component(
+        result, include_files_info, import_statement_set, "../../components"
+    )
+
+    result = fix_file_imports(result, import_statement_set, "./include")
+    result = convert_admonitions_to_asides(result, import_statement_set, "../../components")
+    result = convert_tab_syntax(result, import_statement_set)
+    result = replace_setting_links(result, import_statement_set, "../../components")
+    result = replace_relative_links(result, import_statement_set, "../../components")
+    result = escape_curly_braces(result)
     result = replace_emoticon_translation_table(result, import_statement_set)
     result = replace_image_path(result, "../../../../static/images/help")
     result = replace_icons(result, import_statement_set)
-    result = convert_admonitions_to_asides(result, import_statement_set, "../../components")
+    result = convert_comments(result)
     result = insert_imports(result, import_statement_set, 2)
     result = insert_frontmatter(result)
     return result
@@ -306,6 +556,7 @@ def convert_help_center_file_to_mdx(
 
 def convert_include_file_to_mdx(
     markdown_file_path: str,
+    include_files_info: dict[str, IncludeFileInfo],
 ) -> str:
     """
     Given a path to a Markdown file, return the equivalent MDX file.
@@ -323,32 +574,86 @@ def convert_include_file_to_mdx(
     # All imports inserted during conversion should be tracked here.
     import_statement_set: set[str] = set()
 
-    result = fix_file_imports(result, import_statement_set, ".")
-    result = escape_curly_braces(result)
     result = fix_relative_path(result)
+    # We are not inserting FlattenList components for files
+    # with !!! tip components, since we need to do it inside the
+    # include file. We can do it during the cutover manually or
+    # in a followup PR.
+    # All unordered lists at the time of writing this comment are
+    # standalone components and we do not need to do any transformation
+    # for them.
+    result = insert_flattened_steps_component(
+        result, include_files_info, import_statement_set, "../../../components"
+    )
+
+    result = fix_file_imports(result, import_statement_set, ".")
+    result = convert_admonitions_to_asides(result, import_statement_set, "../../../components")
+    result = convert_tab_syntax(result, import_statement_set)
+    result = replace_setting_links(result, import_statement_set, "../../../components")
+    result = replace_relative_links(result, import_statement_set, "../../../components")
+    result = escape_curly_braces(result)
     result = replace_image_path(result, "../../../../../static/images/help")
     result = replace_icons(result, import_statement_set)
-    result = convert_admonitions_to_asides(result, import_statement_set, "../../../components")
+    result = convert_comments(result)
     result = insert_imports(result, import_statement_set, 1)
     return result
+
+
+def get_include_files_info(include_input_dir: str) -> dict[str, IncludeFileInfo]:
+    include_files_info: dict[str, IncludeFileInfo] = {}
+    for name in os.listdir(include_input_dir):
+        markdown_file_path = os.path.join(include_input_dir, name)
+        if name.endswith(".md") and os.path.isfile(markdown_file_path):
+            markdown_string = get_markdown_string_from_file(markdown_file_path)
+            include_files_info[name] = {
+                "is_only_ordered_list": is_include_only_ordered_list(markdown_string)
+            }
+
+    return include_files_info
 
 
 def run() -> None:
     input_dir = os.path.join(BASE_DIR, "help")
     output_dir = os.path.join(BASE_DIR, "help-beta/src/content/docs")
+    include_input_dir = os.path.join(input_dir, "include")
+    include_output_dir = os.path.join(output_dir, "include")
     print("Starting the conversion from MD to MDX...")
 
-    converted_count = 0
-
-    # We delete the directory first to remove any stale files
-    # that might have been deleted in the `help` folder but
-    # their converted mdx files stay around
+    # We delete the directory first to remove any stale files that
+    # might have been deleted in the `help` folder but their converted
+    # mdx files stay around. We create it first just in case to avoid
+    # rmtree throwing exceptions.
+    os.makedirs(output_dir, exist_ok=True)
     shutil.rmtree(output_dir)
     os.makedirs(output_dir, exist_ok=True)
-    for name in os.listdir(input_dir):
-        if os.path.isfile(os.path.join(input_dir, name)):
+
+    converted_count = 0
+    os.makedirs(include_output_dir, exist_ok=True)
+
+    include_files_info: dict[str, IncludeFileInfo] = get_include_files_info(include_input_dir)
+    for name in os.listdir(include_input_dir):
+        if name.endswith(".md") and os.path.isfile(os.path.join(include_input_dir, name)):
             converted_count += 1
-            mdx = convert_help_center_file_to_mdx(os.path.join(input_dir, name))
+            mdx = convert_include_file_to_mdx(
+                os.path.join(include_input_dir, name), include_files_info
+            )
+            with open(
+                os.path.join(
+                    include_output_dir,
+                    "_" + convert_kebab_to_pascal(os.path.basename(name).split(".")[0]) + ".mdx",
+                ),
+                "w",
+            ) as mdx_file:
+                mdx_file.write(mdx)
+    print(
+        f"Converted {converted_count} include files. Proceeding to the conversion of main help files ..."
+    )
+
+    converted_count = 0
+    for name in os.listdir(input_dir):
+        if name.endswith(".md") and os.path.isfile(os.path.join(input_dir, name)):
+            converted_count += 1
+            mdx = convert_help_center_file_to_mdx(os.path.join(input_dir, name), include_files_info)
             with open(
                 os.path.join(
                     output_dir,
@@ -357,25 +662,7 @@ def run() -> None:
                 "w",
             ) as mdx_file:
                 mdx_file.write(mdx)
-    print(f"Converted {converted_count} files. Proceeding to the conversion of include files ...")
-
-    include_converted_count = 0
-    include_input_dir = os.path.join(input_dir, "include")
-    include_output_dir = os.path.join(output_dir, "include")
-    os.makedirs(include_output_dir, exist_ok=True)
-    for name in os.listdir(include_input_dir):
-        if os.path.isfile(os.path.join(include_input_dir, name)):
-            include_converted_count += 1
-            mdx = convert_include_file_to_mdx(os.path.join(include_input_dir, name))
-            with open(
-                os.path.join(
-                    include_output_dir,
-                    "_" + os.path.basename(name).split(".")[0] + ".mdx",
-                ),
-                "w",
-            ) as mdx_file:
-                mdx_file.write(mdx)
-    print(f"Converted {include_converted_count} include files. Conversion completed.")
+    print(f"Converted {converted_count} main help files. Conversion completed.")
 
 
 run()

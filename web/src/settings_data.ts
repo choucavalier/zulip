@@ -176,10 +176,6 @@ export function can_manage_user_group(group_id: number): boolean {
 
 export function can_add_members_to_user_group(group_id: number): boolean {
     const group = user_groups.get_user_group_from_id(group_id);
-    // We cannot add members if the group is deactivated.
-    if (group.deactivated) {
-        return false;
-    }
     if (
         user_has_permission_for_group_setting(
             group.can_add_members_group,
@@ -195,10 +191,6 @@ export function can_add_members_to_user_group(group_id: number): boolean {
 
 export function can_remove_members_from_user_group(group_id: number): boolean {
     const group = user_groups.get_user_group_from_id(group_id);
-    // We cannot remove members if the group is deactivated.
-    if (group.deactivated) {
-        return false;
-    }
     if (
         user_has_permission_for_group_setting(
             group.can_remove_members_group,
@@ -214,10 +206,6 @@ export function can_remove_members_from_user_group(group_id: number): boolean {
 
 export function can_join_user_group(group_id: number): boolean {
     const group = user_groups.get_user_group_from_id(group_id);
-    // One cannot join a deactivated group.
-    if (group.deactivated) {
-        return false;
-    }
     if (user_has_permission_for_group_setting(group.can_join_group, "can_join_group", "group")) {
         return true;
     }
@@ -226,11 +214,7 @@ export function can_join_user_group(group_id: number): boolean {
 }
 
 export function can_leave_user_group(group_id: number): boolean {
-    // One cannot leave a deactivated group.
     const group = user_groups.get_user_group_from_id(group_id);
-    if (group.deactivated) {
-        return false;
-    }
     if (user_has_permission_for_group_setting(group.can_leave_group, "can_leave_group", "group")) {
         return true;
     }
@@ -353,6 +337,14 @@ export function user_can_access_all_other_users(): boolean {
     // channels, which is typically the entire user set for a server
     // anyway.
     if (page_params.is_spectator) {
+        return true;
+    }
+
+    if (!current_user.is_guest) {
+        // The only valid values for this setting are role:members and
+        // role:everyone, both of which are always true for non-guest
+        // users. This is an important optimization for code that may
+        // call this function in a loop.
         return true;
     }
 

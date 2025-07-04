@@ -1,7 +1,9 @@
 # Keep this synchronized with web/src/topic_link_util.ts
 
 import re
-import urllib.parse
+
+from zerver.lib.url_encoding import encode_channel, encode_hash_component
+from zerver.models.messages import Message
 
 invalid_stream_topic_regex = re.compile(r"[`>*&\[\]]|(\$\$)")
 
@@ -29,42 +31,47 @@ def escape_invalid_stream_topic_characters(text: str) -> str:
     )
 
 
-hash_replacements = {
-    "%": ".",
-    "(": ".28",
-    ")": ".29",
-    ".": ".2E",
-}
-
-
-def encode_hash_component(s: str) -> str:
-    encoded = urllib.parse.quote(s, safe="*")
-    return "".join(hash_replacements.get(c, c) for c in encoded)
-
-
-def channel_topic_url(stream_id: int, stream_name: str, topic_name: str | None = None) -> str:
-    link = f"#narrow/channel/{stream_id}-{encode_hash_component(stream_name.replace(' ', '-'))}"
-    if topic_name:
-        link += f"/topic/{encode_hash_component(topic_name)}"
-    return link
-
-
 def get_fallback_markdown_link(
-    stream_id: int, stream_name: str, topic_name: str | None = None
+    stream_id: int, stream_name: str, topic_name: str | None = None, message_id: int | None = None
 ) -> str:
     """
-    Generates the markdown link syntax for a stream or topic link.
+    Helper that should only be called by other methods in this file.
+
+    Generates the vanilla markdown link syntax for a stream/topic/message link, as
+    a fallback for cases where the nicer Zulip link syntax would not
+    render properly due to special characters in the channel or topic name.
     """
     escape = escape_invalid_stream_topic_characters
-    url = channel_topic_url(stream_id, stream_name, topic_name)
-    if topic_name:
-        return f"[#{escape(stream_name)} > {escape(topic_name)}]({url})"
+    link = f"#narrow/channel/{encode_channel(stream_id, stream_name)}"
+    text = f"#{escape(stream_name)}"
+    if topic_name is not None:
+        link += f"/topic/{encode_hash_component(topic_name)}"
+        if topic_name == "":
+            topic_name = Message.EMPTY_TOPIC_FALLBACK_NAME
+        text += f" > {escape(topic_name)}"
 
-    return f"[#{escape(stream_name)}]({url})"
+    if message_id is not None:
+        link += f"/near/{message_id}"
+        text += " @ 💬"
+
+    return f"[{text}]({link})"
+
+
+def get_message_link_syntax(
+    stream_id: int, stream_name: str, topic_name: str, message_id: int
+) -> str:
+    # If the stream/topic name is such that it will
+    # generate an invalid #**stream>topic@message_id** syntax,
+    # we revert to generating the normal markdown syntax for a link.
+    if will_produce_broken_stream_topic_link(topic_name) or will_produce_broken_stream_topic_link(
+        stream_name
+    ):
+        return get_fallback_markdown_link(stream_id, stream_name, topic_name, message_id)
+    return f"#**{stream_name}>{topic_name}@{message_id}**"
 
 
 def get_stream_topic_link_syntax(stream_id: int, stream_name: str, topic_name: str) -> str:
-    # If the topic name is such that it will generate an invalid #**stream>topic** syntax,
+    # If the stream/topic name is such that it will generate an invalid #**stream>topic** syntax,
     # we revert to generating the normal markdown syntax for a link.
     if will_produce_broken_stream_topic_link(topic_name) or will_produce_broken_stream_topic_link(
         stream_name
@@ -74,7 +81,7 @@ def get_stream_topic_link_syntax(stream_id: int, stream_name: str, topic_name: s
 
 
 def get_stream_link_syntax(stream_id: int, stream_name: str) -> str:
-    # If the topic name is such that it will generate an invalid #**stream>topic** syntax,
+    # If the stream name is such that it will generate an invalid #**stream** syntax,
     # we revert to generating the normal markdown syntax for a link.
     if will_produce_broken_stream_topic_link(stream_name):
         return get_fallback_markdown_link(stream_id, stream_name)

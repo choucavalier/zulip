@@ -25,6 +25,7 @@ import * as settings_toggle from "./settings_toggle.ts";
 import * as settings_users from "./settings_users.ts";
 import {current_user, realm} from "./state_data.ts";
 import {the} from "./util.ts";
+import * as util from "./util.ts";
 
 const admin_settings_label = {
     // Organization profile
@@ -32,7 +33,6 @@ const admin_settings_label = {
         defaultMessage: "Advertise organization in the Zulip communities directory",
     }),
     // Organization settings
-    realm_mandatory_topics: $t({defaultMessage: "Require topics in channel messages"}),
     realm_new_stream_announcements_stream: $t({defaultMessage: "New channel announcements"}),
     realm_signup_announcements_stream: $t({defaultMessage: "New user announcements"}),
     realm_zulip_update_announcements_stream: $t({defaultMessage: "Zulip update announcements"}),
@@ -156,6 +156,14 @@ export function build_page(): void {
             settings_components.get_realm_time_limits_in_minutes(
                 "realm_message_content_edit_limit_seconds",
             ),
+        realm_move_messages_between_streams_limit_minutes:
+            settings_components.get_realm_time_limits_in_minutes(
+                "realm_move_messages_between_streams_limit_seconds",
+            ),
+        realm_move_messages_within_stream_limit_minutes:
+            settings_components.get_realm_time_limits_in_minutes(
+                "realm_move_messages_within_stream_limit_seconds",
+            ),
         realm_message_content_delete_limit_minutes:
             settings_components.get_realm_time_limits_in_minutes(
                 "realm_message_content_delete_limit_seconds",
@@ -182,7 +190,9 @@ export function build_page(): void {
         realm_logo_url: realm.realm_logo_url,
         realm_night_logo_source: realm.realm_night_logo_source,
         realm_night_logo_url,
-        realm_mandatory_topics: realm.realm_mandatory_topics,
+        realm_topics_policy: realm.realm_topics_policy,
+        realm_topics_policy_values: settings_config.get_realm_topics_policy_values(),
+        empty_string_topic_display_name: util.get_final_topic_display_name(""),
         realm_send_welcome_emails: realm.realm_send_welcome_emails,
         realm_message_content_allowed_in_email_notifications:
             realm.realm_message_content_allowed_in_email_notifications,

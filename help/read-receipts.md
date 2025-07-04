@@ -22,7 +22,7 @@ their organization.
 
 {!message-actions-menu.md!}
 
-3. Click **View read receipts**.
+1. Click **View read receipts**.
 
 !!! keyboard_tip ""
 
@@ -31,9 +31,13 @@ their organization.
 
 {tab|mobile}
 
-{!message-long-press-menu.md!}
+Access this feature by following the web app instructions in your
+mobile device browser.
 
-1. Tap **View read receipts**.
+Implementation of this feature in the mobile app is tracked [on
+GitHub](https://github.com/zulip/zulip-flutter/issues/667). If
+you're interested in this feature, please react to the issue's
+description with 👍.
 
 {end_tabs}
 

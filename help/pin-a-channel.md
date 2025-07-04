@@ -16,11 +16,13 @@ which is especially handy if you are subscribed to a large number of channels.
 
 {tab|mobile}
 
-{!channel-long-press-menu.md!}
+Access this feature by following the web app instructions in your
+mobile device browser.
 
-1. Tap **Pin to top**.
-
-{!channel-long-press-menu-tip.md!}
+Implementation of this feature in the mobile app is tracked [on
+GitHub](https://github.com/zulip/zulip-flutter/issues/1223). If
+you're interested in this feature, please react to the issue's
+description with 👍.
 
 {end_tabs}
 
@@ -36,11 +38,13 @@ which is especially handy if you are subscribed to a large number of channels.
 
 {tab|mobile}
 
-{!channel-long-press-menu.md!}
+Access this feature by following the web app instructions in your
+mobile device browser.
 
-1. Tap **Unpin from top**.
-
-{!channel-long-press-menu-tip.md!}
+Implementation of this feature in the mobile app is tracked [on
+GitHub](https://github.com/zulip/zulip-flutter/issues/1223). If
+you're interested in this feature, please react to the issue's
+description with 👍.
 
 {end_tabs}
 
@@ -57,16 +61,6 @@ which is especially handy if you are subscribed to a large number of channels.
 {!select-channel-view-personal.md!}
 
 1. Under **Personal settings**, toggle **Pin channel to top of left sidebar**.
-
-{tab|mobile}
-
-{!channel-long-press-menu.md!}
-
-1. Tap **Channel settings**.
-
-1. Toggle **Pinned**.
-
-{!mobile-channel-settings-menu-tip.md!}
 
 {end_tabs}
 

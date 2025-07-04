@@ -16,6 +16,7 @@ import type {
     StreamNotificationSettings,
     UserSettings,
 } from "./user_settings.ts";
+import * as util from "./util.ts";
 
 /*
     This file contains translations between the integer values used in
@@ -65,6 +66,10 @@ export const web_channel_default_view_values = {
     top_topic_in_channel: {
         code: 1,
         description: $t({defaultMessage: "Top topic in the channel"}),
+    },
+    top_unread_topic_in_channel: {
+        code: 4,
+        description: $t({defaultMessage: "Top unread topic in the channel"}),
     },
     list_of_topics: {
         code: 3,
@@ -290,6 +295,50 @@ export const message_edit_history_visibility_policy_values = {
         code: "none",
         description: $t({defaultMessage: "Don't allow"}),
     },
+};
+
+type PolicyValue = {
+    code: string;
+    description: string;
+};
+
+type RealmTopicsPolicyValues = {
+    allow_empty_topic: PolicyValue;
+    disable_empty_topic: PolicyValue;
+};
+
+type StreamTopicsPolicyValues = {
+    inherit: PolicyValue;
+} & RealmTopicsPolicyValues;
+
+export const get_realm_topics_policy_values = (): RealmTopicsPolicyValues => {
+    const empty_topic_name = util.get_final_topic_display_name("");
+
+    return {
+        allow_empty_topic: {
+            code: "allow_empty_topic",
+            description: $t(
+                {defaultMessage: '"{empty_topic_name}" topic allowed'},
+                {empty_topic_name},
+            ),
+        },
+        disable_empty_topic: {
+            code: "disable_empty_topic",
+            description: $t({defaultMessage: 'No "{empty_topic_name}" topic'}, {empty_topic_name}),
+        },
+    };
+};
+
+export const get_stream_topics_policy_values = (): StreamTopicsPolicyValues => {
+    const realm_topics_policy_values = get_realm_topics_policy_values();
+
+    return {
+        inherit: {
+            code: "inherit",
+            description: $t({defaultMessage: "Automatic"}),
+        },
+        ...realm_topics_policy_values,
+    };
 };
 
 export const time_limit_dropdown_values = [
@@ -574,6 +623,9 @@ export const preferences_settings_labels = {
     ),
     receives_typing_notifications: $t({defaultMessage: "Show when other users are typing"}),
     starred_message_counts: $t({defaultMessage: "Show counts for starred messages"}),
+    web_left_sidebar_unreads_count_summary: $t({
+        defaultMessage: "Show unread count summaries in the left sidebar",
+    }),
     twenty_four_hour_time: $t({defaultMessage: "Time format"}),
     translate_emoticons: new Handlebars.SafeString(
         $t_html({
@@ -670,10 +722,10 @@ export const all_group_setting_labels = {
         can_manage_billing_group: $t({defaultMessage: "Who can manage plans and billing"}),
         can_create_groups: $t({defaultMessage: "Who can create user groups"}),
         can_move_messages_between_topics_group: $t({
-            defaultMessage: "Who can move messages to another topic",
+            defaultMessage: "Who can edit topics in any channel",
         }),
         can_move_messages_between_channels_group: $t({
-            defaultMessage: "Who can move messages to another channel",
+            defaultMessage: "Who can move messages out of any channel",
         }),
         can_resolve_topics_group: $t({defaultMessage: "Who can resolve topics"}),
         can_delete_any_message_group: $t({defaultMessage: "Who can delete any message"}),
@@ -690,9 +742,21 @@ export const all_group_setting_labels = {
         can_mention_many_users_group: $t({
             defaultMessage: "Who can notify a large number of users with a wildcard mention",
         }),
+        can_set_topics_policy_group: new Handlebars.SafeString(
+            $t_html({
+                defaultMessage:
+                    "Who can configure per-channel topic settings <i>(also requires being a channel administrator)</i>",
+            }),
+        ),
     },
     stream: {
         can_add_subscribers_group: $t({defaultMessage: "Who can subscribe anyone to this channel"}),
+        can_move_messages_out_of_channel_group: $t({
+            defaultMessage: "Who can move messages out of this channel",
+        }),
+        can_move_messages_within_channel_group: $t({
+            defaultMessage: "Who can move messages inside this channel",
+        }),
         can_send_message_group: $t({defaultMessage: "Who can post to this channel"}),
         can_administer_channel_group: $t({defaultMessage: "Who can administer this channel"}),
         can_subscribe_group: $t({defaultMessage: "Who can subscribe to this channel"}),
@@ -732,6 +796,7 @@ export const realm_group_permission_settings: {
             "can_create_private_channel_group",
             "can_add_subscribers_group",
             "can_mention_many_users_group",
+            "can_set_topics_policy_group",
         ],
     },
     {
@@ -788,6 +853,8 @@ export const owner_editable_realm_group_permission_settings = new Set([
 export const stream_group_permission_settings: StreamGroupSettingName[] = [
     "can_send_message_group",
     "can_administer_channel_group",
+    "can_move_messages_out_of_channel_group",
+    "can_move_messages_within_channel_group",
     "can_subscribe_group",
     "can_add_subscribers_group",
     "can_remove_subscribers_group",
@@ -973,6 +1040,7 @@ type NotificationSettingCheckbox = {
     is_disabled: boolean;
     is_checked: boolean;
     is_mobile_checkbox: boolean;
+    push_notifications_disabled: boolean;
 };
 
 export function get_notifications_table_row_data(
@@ -987,6 +1055,7 @@ export function get_notifications_table_row_data(
                 is_disabled: true,
                 is_checked: false,
                 is_mobile_checkbox: false,
+                push_notifications_disabled: false,
             };
         }
 
@@ -1000,11 +1069,27 @@ export function get_notifications_table_row_data(
             is_disabled: false,
             is_checked: checked,
             is_mobile_checkbox: false,
+            push_notifications_disabled: !realm.realm_push_notifications_enabled,
         };
         if (column === "mobile") {
             checkbox.is_disabled = !realm.realm_push_notifications_enabled;
             checkbox.is_mobile_checkbox = true;
         }
+        return checkbox;
+    });
+}
+
+export function get_custom_stream_specific_notifications_table_row_data(): NotificationSettingCheckbox[] {
+    // Returns an array of NotificationSettingCheckbox for the special row that
+    // allows adding new configuration for a previously uncustomized channel.
+    return stream_specific_notification_settings.map((setting_name) => {
+        const checkbox = {
+            setting_name,
+            is_disabled: true,
+            is_checked: false,
+            is_mobile_checkbox: setting_name === "push_notifications",
+            push_notifications_disabled: !realm.realm_push_notifications_enabled,
+        };
         return checkbox;
     });
 }
@@ -1256,3 +1341,5 @@ export const realm_plan_types = {
     standard_free: {code: 4},
     plus: {code: 10},
 };
+
+export const no_folder_selected = -1;

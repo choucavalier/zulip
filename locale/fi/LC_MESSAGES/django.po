@@ -19,7 +19,7 @@ msgstr ""
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2025-03-20 06:34+0000\n"
 "PO-Revision-Date: 2015-12-06 00:18+0000\n"
-"Last-Translator: Matti R, 2020-2021,2025\n"
+"Last-Translator: Flammie <flammie@iki.fi>, 2020,2022,2024-2025\n"
 "Language-Team: Finnish (http://app.transifex.com/zulip/zulip/language/fi/)\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
@@ -5106,14 +5106,14 @@ msgstr "Operandia {operand} ei tueta"
 msgid ""
 "\n"
 "To learn more, check out our [using Zulip for a class guide]({getting_started_url})!\n"
-msgstr ""
+msgstr "\nLisätietoja ohjeessa  [Zulipin käyttö luokassa]({getting_started_url}).\n"
 
 #: zerver/lib/onboarding.py:57
 #, python-brace-format
 msgid ""
 "\n"
 "To learn more, check out our [getting started guide]({getting_started_url})!\n"
-msgstr ""
+msgstr "\nLisätietoja [aloitusoppaassamme]({getting_started_url})! \n"
 
 #: zerver/lib/onboarding.py:65
 #, python-brace-format

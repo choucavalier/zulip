@@ -5,10 +5,10 @@ import assert from "minimalistic-assert";
 import generated_emoji_codes from "../../static/generated/emoji/emoji_codes.json";
 import * as fenced_code from "../shared/src/fenced_code.ts";
 import render_compose from "../templates/compose.hbs";
-import render_message_feed_bottom_whitespace from "../templates/message_feed_bottom_whitespace.hbs";
 import render_message_feed_errors from "../templates/message_feed_errors.hbs";
 import render_navbar from "../templates/navbar.hbs";
 import render_try_zulip_modal from "../templates/try_zulip_modal.hbs";
+import render_view_bottom_loading_indicator from "../templates/view_bottom_loading_indicator.hbs";
 
 import * as about_zulip from "./about_zulip.ts";
 import * as activity from "./activity.ts";
@@ -21,6 +21,7 @@ import * as banners from "./banners.ts";
 import * as blueslip from "./blueslip.ts";
 import * as bot_data from "./bot_data.ts";
 import * as channel from "./channel.ts";
+import * as channel_folders from "./channel_folders.ts";
 import * as click_handlers from "./click_handlers.ts";
 import * as color_picker_popover from "./color_picker_popover.ts";
 import * as common from "./common.ts";
@@ -72,6 +73,7 @@ import * as message_fetch from "./message_fetch.ts";
 import * as message_list_hover from "./message_list_hover.ts";
 import * as message_list_tooltips from "./message_list_tooltips.ts";
 import * as message_lists from "./message_lists.ts";
+import * as message_reminder from "./message_reminder.ts";
 import * as message_scroll from "./message_scroll.ts";
 import * as message_view from "./message_view.ts";
 import * as message_view_header from "./message_view_header.ts";
@@ -102,6 +104,7 @@ import * as realm_playground from "./realm_playground.ts";
 import * as realm_user_settings_defaults from "./realm_user_settings_defaults.ts";
 import * as recent_view_ui from "./recent_view_ui.ts";
 import * as reload_setup from "./reload_setup.js";
+import * as reminders_overlay_ui from "./reminders_overlay_ui.ts";
 import * as resize_handler from "./resize_handler.ts";
 import * as saved_snippets from "./saved_snippets.ts";
 import * as scheduled_messages from "./scheduled_messages.ts";
@@ -179,7 +182,7 @@ import * as widgets from "./widgets.js";
    things jumping around slightly when the email address is shown. */
 
 function initialize_bottom_whitespace() {
-    $("#bottom_whitespace").html(render_message_feed_bottom_whitespace());
+    $("#bottom_whitespace").html(render_view_bottom_loading_indicator());
 }
 
 function initialize_navbar() {
@@ -451,12 +454,17 @@ export async function initialize_everything(state_data) {
     left_sidebar_tooltips.initialize();
     // This populates data for scheduled messages.
     scheduled_messages.initialize(state_data.scheduled_messages);
+    message_reminder.initialize(state_data.reminders);
     scheduled_messages_ui.initialize();
+    reminders_overlay_ui.initialize();
     popover_menus.initialize();
     left_sidebar_navigation_area_popovers.initialize();
     user_topic_popover.initialize();
     topic_popover.initialize();
-    message_actions_popover.initialize();
+    const message_reminder_click_handler = (remind_message_id, target) => {
+        compose_send_menu_popover.open_schedule_message_menu(remind_message_id, target);
+    };
+    message_actions_popover.initialize({message_reminder_click_handler});
     compose_send_menu_popover.initialize();
 
     realm_user_settings_defaults.initialize(state_data.realm_settings_defaults);
@@ -474,6 +482,9 @@ export async function initialize_everything(state_data) {
     // module, so that we can tell whether user is member of
     // user_group whose members are allowed to create multiuse invite.
     user_groups.initialize(state_data.user_groups);
+
+    // Channel folders data must be initialized before left sidebar.
+    channel_folders.initialize(state_data.channel_folders);
 
     // These components must be initialized early, because other
     // modules' initialization has not been audited for whether they
@@ -713,11 +724,9 @@ export async function initialize_everything(state_data) {
     drafts_overlay_ui.initialize();
     // This needs to happen after activity_ui.initialize, so that user_filter
     // is defined. Also, must happen after people.initialize()
-    onboarding_steps.initialize(
-        state_data.onboarding_steps,
-        state_data.navigation_tour_video_url,
-        message_view.show,
-    );
+    onboarding_steps.initialize(state_data.onboarding_steps, {
+        show_message_view: message_view.show,
+    });
     typing.initialize();
     starred_messages_ui.initialize();
     user_status_ui.initialize();

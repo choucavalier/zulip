@@ -26,6 +26,7 @@ from zerver.actions.message_send import (
 )
 from zerver.actions.realm_settings import (
     clean_deactivated_realm_data,
+    delete_expired_demo_organizations,
     do_add_deactivated_redirect,
     do_change_realm_max_invites,
     do_change_realm_org_type,
@@ -1225,6 +1226,64 @@ class RealmTest(ZulipTestCase):
             clean_deactivated_realm_data()
             mock_scrub_realm.assert_called_once_with(zephyr, acting_user=None)
 
+    def test_delete_expired_demo_organizations(self) -> None:
+        zulip = get_realm("zulip")
+        assert not zulip.deactivated
+        assert zulip.demo_organization_scheduled_deletion_date is None
+
+        with mock.patch(
+            "zerver.actions.realm_settings.do_deactivate_realm"
+        ) as mock_deactivate_realm:
+            delete_expired_demo_organizations()
+            mock_deactivate_realm.assert_not_called()
+
+        # Add scheduled demo organization deletion date
+        zulip.demo_organization_scheduled_deletion_date = timezone_now() + timedelta(days=4)
+        zulip.save()
+
+        # Before deletion date
+        with mock.patch(
+            "zerver.actions.realm_settings.do_deactivate_realm"
+        ) as mock_deactivate_realm:
+            delete_expired_demo_organizations()
+            mock_deactivate_realm.assert_not_called()
+
+        # After deletion date, when owner email is set.
+        with (
+            time_machine.travel(timezone_now() + timedelta(days=5), tick=False),
+            mock.patch(
+                "zerver.actions.realm_settings.do_deactivate_realm"
+            ) as mock_deactivate_realm,
+        ):
+            delete_expired_demo_organizations()
+            mock_deactivate_realm.assert_called_once_with(
+                realm=zulip,
+                acting_user=None,
+                deactivation_reason="demo_expired",
+                deletion_delay_days=0,
+                email_owners=True,
+            )
+
+        # After deletion date, when owner email is not set.
+        desdemona = self.example_user("desdemona")
+        desdemona.delivery_email = ""
+        desdemona.save()
+
+        with (
+            time_machine.travel(timezone_now() + timedelta(days=5), tick=False),
+            mock.patch(
+                "zerver.actions.realm_settings.do_deactivate_realm"
+            ) as mock_deactivate_realm,
+        ):
+            delete_expired_demo_organizations()
+            mock_deactivate_realm.assert_called_once_with(
+                realm=zulip,
+                acting_user=None,
+                deactivation_reason="demo_expired",
+                deletion_delay_days=0,
+                email_owners=False,
+            )
+
     def test_initial_plan_type(self) -> None:
         with self.settings(BILLING_ENABLED=True):
             self.assertEqual(do_create_realm("hosted", "hosted").plan_type, Realm.PLAN_TYPE_LIMITED)
@@ -1998,6 +2057,7 @@ class RealmAPITest(ZulipTestCase):
             message_content_edit_limit_seconds=[1000, 1100, 1200],
             move_messages_within_stream_limit_seconds=[1000, 1100, 1200],
             move_messages_between_streams_limit_seconds=[1000, 1100, 1200],
+            topics_policy=Realm.REALM_TOPICS_POLICY_TYPES,
         )
 
         vals = test_values.get(name)
@@ -2381,6 +2441,13 @@ class RealmAPITest(ZulipTestCase):
             {"message_edit_history_visibility_policy": "invalid"},
         )
         self.assert_json_error(result, "Invalid message_edit_history_visibility_policy")
+
+    def test_invalid_topics_policy(self) -> None:
+        result = self.client_patch(
+            "/json/realm",
+            {"topics_policy": "invalid"},
+        )
+        self.assert_json_error(result, "Invalid topics_policy")
 
     def update_with_realm_default_api(self, name: str, val: Any) -> None:
         if not isinstance(val, str):

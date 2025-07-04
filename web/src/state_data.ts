@@ -63,6 +63,17 @@ export const scheduled_message_schema = z
         ]),
     );
 
+export const reminder_schema = z.object({
+    reminder_id: z.number(),
+    type: z.literal("private"),
+    to: z.array(z.number()),
+    content: z.string(),
+    rendered_content: z.string(),
+    scheduled_delivery_timestamp: z.number(),
+    failed: z.boolean(),
+    reminder_target_message_id: z.number(),
+});
+
 export const profile_datum_schema = z.object({
     value: z.string(),
     rendered_value: z.string().nullish(),
@@ -139,6 +150,15 @@ export const raw_user_group_schema = z.object({
     can_mention_group: group_setting_value_schema,
     can_remove_members_group: group_setting_value_schema,
     deactivated: z.boolean(),
+});
+
+export const channel_folder_schema = z.object({
+    id: z.number(),
+    name: z.string(),
+    rendered_description: z.string(),
+    creator_id: z.number().nullable(),
+    date_created: z.number(),
+    is_archived: z.boolean(),
 });
 
 export const user_topic_schema = z.object({
@@ -274,6 +294,7 @@ export const realm_schema = z.object({
     max_stream_description_length: z.number(),
     max_stream_name_length: z.number(),
     max_topic_length: z.number(),
+    max_bulk_new_subscription_messages: z.number(),
     password_min_guesses: z.number(),
     password_min_length: z.number(),
     password_max_length: z.number(),
@@ -312,6 +333,7 @@ export const realm_schema = z.object({
     realm_can_move_messages_between_channels_group: group_setting_value_schema,
     realm_can_move_messages_between_topics_group: group_setting_value_schema,
     realm_can_resolve_topics_group: group_setting_value_schema,
+    realm_can_set_topics_policy_group: group_setting_value_schema,
     realm_can_summarize_topics_group: group_setting_value_schema,
     realm_create_multiuse_invite_group: group_setting_value_schema,
     realm_date_created: z.number(),
@@ -374,7 +396,6 @@ export const realm_schema = z.object({
     realm_linkifiers: z.array(realm_linkifier_schema),
     realm_logo_source: z.string(),
     realm_logo_url: z.string(),
-    realm_mandatory_topics: z.boolean(),
     realm_message_content_allowed_in_email_notifications: z.boolean(),
     realm_message_content_edit_limit_seconds: z.number().nullable(),
     realm_message_content_delete_limit_seconds: z.number().nullable(),
@@ -397,6 +418,7 @@ export const realm_schema = z.object({
     realm_require_unique_names: z.boolean(),
     realm_send_welcome_emails: z.boolean(),
     realm_signup_announcements_stream_id: z.number(),
+    realm_topics_policy: z.enum(["allow_empty_topic", "disable_empty_topic"]),
     realm_upload_quota_mib: z.nullable(z.number()),
     realm_url: z.string(),
     realm_video_chat_provider: z.number(),
@@ -501,6 +523,11 @@ export const state_data_schema = z
     )
     .and(
         z
+            .object({channel_folders: z.array(channel_folder_schema)})
+            .transform((channel_folders) => ({channel_folders})),
+    )
+    .and(
+        z
             .object({
                 unread_msgs: z.object({
                     pms: z.array(unread_direct_message_info_schema),
@@ -543,6 +570,7 @@ export const state_data_schema = z
             .object({scheduled_messages: z.array(scheduled_message_schema)})
             .transform((scheduled_messages) => ({scheduled_messages})),
     )
+    .and(z.object({reminders: z.array(reminder_schema)}).transform((reminders) => ({reminders})))
     .and(
         z
             .object({
@@ -566,10 +594,7 @@ export const state_data_schema = z
                 onboarding_steps: z.array(onboarding_step_schema),
                 navigation_tour_video_url: z.nullable(z.string()),
             })
-            .transform(({onboarding_steps, navigation_tour_video_url}) => ({
-                onboarding_steps: {onboarding_steps},
-                navigation_tour_video_url,
-            })),
+            .transform((onboarding_steps) => ({onboarding_steps})),
     )
     .and(current_user_schema.transform((current_user) => ({current_user})))
     .and(realm_schema.transform((realm) => ({realm})));

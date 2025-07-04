@@ -24,6 +24,8 @@ You will only see the options below if you have the required permissions.
 1. Under **Add subscribers**, enter a name or email address. The typeahead
    will only include users who aren't already subscribed to the channel.
 
+1. Configure **Send notification message to newly subscribed users** as desired.
+
 1. Click **Add**.
 
 !!! tip ""
@@ -33,21 +35,13 @@ You will only see the options below if you have the required permissions.
 
 {tab|mobile}
 
-{!mobile-all-channels-view.md!}
+Access this feature by following the web app instructions in your
+mobile device browser.
 
-{!channel-long-press-menu.md!}
-
-1. Tap **Channel settings**.
-
-1. Tap **Add subscribers**.
-
-1. Start typing the name of the person you want to subscribe, and
-   select their name from the list of suggestions. You can continue
-   selecting as many users as you'd like to subscribe.
-
-1. Approve by tapping the **checkmark**
-   (<img src="/static/images/help/mobile-check-circle-icon.svg" alt="checkmark" class="help-center-icon"/>)
-   button in the bottom right corner of the app.
+Implementation of this feature in the mobile app is tracked [on
+GitHub](https://github.com/zulip/zulip-flutter/issues/1222). If
+you're interested in this feature, please react to the issue's
+description with 👍.
 
 {end_tabs}
 
@@ -70,25 +64,9 @@ You will only see the options below if you have the required permissions.
 1. Under **Add subscribers**, enter a name or email address. The typeahead
    will only include users who aren't already subscribed to the channel.
 
+1. Configure **Send notification message to newly subscribed users** as desired.
+
 1. Click **Add**.
-
-{tab|mobile}
-
-{!channel-long-press-menu.md!}
-
-1. Tap **Channel settings**.
-
-1. Tap **Add subscribers**.
-
-1. Start typing the name of the person you want to subscribe, and
-   select their name from the list of suggestions. You can continue
-   selecting as many users as you'd like to subscribe.
-
-1. Approve by tapping the **checkmark**
-   (<img src="/static/images/help/mobile-check-circle-icon.svg" alt="checkmark" class="help-center-icon"/>)
-   button in the bottom right corner of the app.
-
-{!mobile-channel-settings-menu-tip.md!}
 
 {end_tabs}
 

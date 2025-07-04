@@ -171,9 +171,8 @@ below to see if you're missing anything:
 
 Error: {error_message}
 
-Feel free to reach out to the [Zulip development community]
-(https://chat.zulip.org/#narrow/channel/127-integrations) if you need
-further help!
+Feel free to reach out to the [Zulip development community](https://chat.zulip.org/#narrow/channel/127-integrations)
+if you need further help!
 """
 
 
@@ -272,7 +271,7 @@ def api_slack_webhook(
         # for how to add support for this type of payload.
         raise UnsupportedWebhookEventTypeError(
             "integration bot message"
-            if event_dict["subtype"] == "bot_message"
+            if event_dict["subtype"].tame(check_string) == "bot_message"
             else "unknown Slack event"
         )
     sender = get_slack_sender_name(user_id, slack_app_token)

@@ -26,6 +26,7 @@ import * as message_live_update from "./message_live_update.ts";
 import * as message_view_header from "./message_view_header.ts";
 import * as narrow_state from "./narrow_state.ts";
 import * as overlays from "./overlays.ts";
+import {page_params} from "./page_params.ts";
 import {postprocess_content} from "./postprocess_content.ts";
 import * as resize from "./resize.ts";
 import * as scroll_util from "./scroll_util.ts";
@@ -43,7 +44,7 @@ import * as stream_settings_api from "./stream_settings_api.ts";
 import * as stream_settings_components from "./stream_settings_components.ts";
 import * as stream_settings_containers from "./stream_settings_containers.ts";
 import * as stream_settings_data from "./stream_settings_data.ts";
-import type {StreamPermissionGroupSetting} from "./stream_types.ts";
+import type {StreamPermissionGroupSetting, StreamTopicsPolicy} from "./stream_types.ts";
 import * as stream_ui_updates from "./stream_ui_updates.ts";
 import * as sub_store from "./sub_store.ts";
 import type {StreamSubscription} from "./sub_store.ts";
@@ -212,6 +213,14 @@ export function update_message_retention_setting(
     stream_ui_updates.update_setting_element(sub, "message_retention_days");
 }
 
+export function update_topics_policy_setting(
+    sub: StreamSubscription,
+    new_value: StreamTopicsPolicy,
+): void {
+    stream_data.update_topics_policy_setting(sub, new_value);
+    stream_ui_updates.update_setting_element(sub, "topics_policy");
+}
+
 export function update_stream_permission_group_setting(
     setting_name: StreamPermissionGroupSetting,
     sub: StreamSubscription,
@@ -229,6 +238,11 @@ export function update_is_default_stream(): void {
         assert(sub !== undefined);
         stream_ui_updates.update_setting_element(sub, "is_default_stream");
     }
+}
+
+export function update_channel_folder(sub: StreamSubscription, folder_id: number | null): void {
+    stream_data.update_channel_folder(sub, folder_id);
+    stream_ui_updates.update_channel_folder_dropdown(sub);
 }
 
 export function update_subscribers_ui(sub: StreamSubscription): void {
@@ -802,6 +816,7 @@ function setup_page(callback: () => void): void {
         // Reset our internal state to reflect that we're initially in
         // the "Subscribed" tab if we're reopening "Stream settings".
         stream_ui_updates.set_show_subscribed(true);
+        stream_ui_updates.set_show_not_subscribed(false);
         toggler = components.toggle({
             child_wants_focus: true,
             values: [
@@ -852,6 +867,7 @@ function setup_page(callback: () => void): void {
             is_owner: current_user.is_owner,
             stream_privacy_policy_values: settings_config.stream_privacy_policy_values,
             stream_privacy_policy,
+            stream_topics_policy_values: settings_config.get_stream_topics_policy_values(),
             check_default_stream: false,
             zulip_plan_is_not_limited: realm.zulip_plan_is_not_limited,
             org_level_message_retention_setting:
@@ -864,6 +880,9 @@ function setup_page(callback: () => void): void {
             group_setting_labels: settings_config.all_group_setting_labels.stream,
             realm_has_archived_channels,
             has_billing_access: settings_data.user_has_billing_access(),
+            is_admin: current_user.is_admin,
+            is_development_environment: page_params.development_environment,
+            empty_string_topic_display_name: util.get_final_topic_display_name(""),
         };
 
         const rendered = render_stream_settings_overlay(template_data);
@@ -898,7 +917,7 @@ function setup_page(callback: () => void): void {
         // is only useful if the user has permission to create
         // streams, either explicitly via user_can_create_streams, or
         // implicitly because realm.realm_is_zephyr_mirror_realm.
-        $("#stream_filter input[type='text']").on("keypress", (e) => {
+        $("#stream_filter input[type='text']").on("keydown", (e) => {
             if (!keydown_util.is_enter_event(e)) {
                 return;
             }
@@ -953,13 +972,13 @@ export function change_state(
     section: string,
     left_side_tab: string | undefined,
     right_side_tab: string,
+    folder_id?: number,
 ): void {
     assert(toggler !== undefined);
     // if in #channels/new form.
     if (section === "new") {
-        do_open_create_stream();
+        do_open_create_stream(folder_id);
         show_right_section();
-        resize.resize_settings_creation_overlay();
         return;
     }
 
@@ -1018,6 +1037,7 @@ export function launch(
     section: string,
     left_side_tab: string | undefined,
     right_side_tab: string,
+    folder_id?: number,
 ): void {
     setup_page(() => {
         overlays.open_overlay({
@@ -1027,7 +1047,7 @@ export function launch(
                 browser_history.exit_overlay();
             },
         });
-        change_state(section, left_side_tab, right_side_tab);
+        change_state(section, left_side_tab, right_side_tab, folder_id);
         setTimeout(() => {
             if (!stream_settings_components.get_active_data().id) {
                 if (section === "new") {
@@ -1037,7 +1057,7 @@ export function launch(
                 }
             }
         }, 0);
-        resize.resize_settings_overlay();
+        resize.resize_settings_overlay($("#channels_overlay_container"));
     });
 }
 
@@ -1130,7 +1150,7 @@ export function view_stream(): void {
     }
 }
 
-export function do_open_create_stream(): void {
+export function do_open_create_stream(folder_id?: number): void {
     // Only call this directly for hash changes.
     // Prefer open_create_stream().
 
@@ -1143,7 +1163,7 @@ export function do_open_create_stream(): void {
         return;
     }
 
-    stream_create.new_stream_clicked(stream.trim());
+    stream_create.new_stream_clicked(stream.trim(), folder_id);
 }
 
 export function open_create_stream(): void {
@@ -1184,6 +1204,9 @@ export function initialize(): void {
     $("#channels_overlay_container").on("click", ".fa-chevron-left", () => {
         $(".right").removeClass("show");
         $("#channels_overlay_container .two-pane-settings-header").removeClass("slide-left");
+        resize.resize_settings_overlay_subheader_for_narrow_screens(
+            $("#channels_overlay_container"),
+        );
     });
 
     $("#channels_overlay_container").on("click", "#preview-stream-button", () => {

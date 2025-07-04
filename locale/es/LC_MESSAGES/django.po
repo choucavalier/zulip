@@ -20,6 +20,7 @@
 # Marcos Matas, 2023
 # Milagros More <milimore16@gmail.com>, 2021
 # Noelia López, 2023
+# Ramón Cruz, 2025
 # Talaios Koop, 2024
 # Tim Abbott <tabbott@kandralabs.com>, 2018
 # Yago González, 2017-2018
@@ -29,7 +30,7 @@ msgstr ""
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2025-03-20 06:34+0000\n"
 "PO-Revision-Date: 2015-12-06 00:18+0000\n"
-"Last-Translator: Talaios Koop, 2024\n"
+"Last-Translator: Ramón Cruz, 2025\n"
 "Language-Team: Spanish (http://app.transifex.com/zulip/zulip/language/es/)\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
@@ -124,19 +125,19 @@ msgid ""
 "have enough Zulip licenses. To allow new users to join, make sure that the "
 "[number of licenses for the current and next billing "
 "period]({billing_page_link}) is greater than the current number of users."
-msgstr ""
+msgstr "Un nuevo usuario ({email}) no se ha podido unir debido a que su organización no tiene suficiente licencias Zulip. Para permitir que nuevos usuarios se unan, asegúrese de que el [número de licencias para el período de facturación actual y el próximo]({billing_page_link}) es mayor que el número actual de usuarios."
 
 #: corporate/lib/registration.py:119
 msgid ""
 "Your organization does not have enough Zulip licenses. Invitations were not "
 "sent."
-msgstr ""
+msgstr "Su organización no tiene suficiente licencias Zulip. Las invitaciones no han sido enviadas."
 
 #: corporate/lib/registration.py:133
 msgid ""
 "Your organization does not have enough Zulip licenses to change a guest "
 "user's role."
-msgstr ""
+msgstr "Su organización no tiene suficiente licencias Zulip para cambiar el rol de un usuario invitado."
 
 #: corporate/lib/remote_billing_util.py:133
 #: corporate/lib/remote_billing_util.py:169
@@ -245,7 +246,7 @@ msgstr "Tu plan ya está planeado para renovarse con {licenses_at_next_renewal} 
 msgid ""
 "You’ve already purchased {licenses_at_next_renewal} licenses for the next "
 "billing period."
-msgstr ""
+msgstr "Ya ha comprado {licenses_at_next_renewal} licencias para el próximo periodo de facturación."
 
 #: corporate/lib/stripe.py:3135
 msgid "Nothing to change."
@@ -307,7 +308,7 @@ msgstr "El token de acceso a facturación es incorrecto."
 msgid ""
 "Couldn't reconcile billing data between server and realm. Please contact "
 "{support_email}"
-msgstr ""
+msgstr "No se han podido reconciliar los datos entre el servidor y el dominio. Por favor, contacte con {support_email}"
 
 #: corporate/views/remote_billing_page.py:296
 msgid "User account doesn't exist yet."
@@ -347,7 +348,7 @@ msgid ""
 "            If this error is unexpected, you can\n"
 "            <a href=\"mailto:%(support_email)s\">contact support</a>.\n"
 "            "
-msgstr ""
+msgstr "\n            Si este error es inesperado, puede\n            <a href=\"mailto:%(support_email)s\">contactar con el soporte</a>.\n            "
 
 #: templates/4xx.html:11
 msgid "Access forbidden (403)"
@@ -360,14 +361,14 @@ msgid ""
 "            browser did not send the credentials required to authenticate\n"
 "            your access. To resolve this issue:\n"
 "            "
-msgstr ""
+msgstr "\n            Su petición no pudo ser completada debido a que su\n            navegador no envió las credenciales requeridas para autenticar\n            su acceso. Para resolver este problema:\n            "
 
 #: templates/4xx.html:22
 msgid ""
 "\n"
 "                Make sure that your browser allows cookies for this site.\n"
 "                "
-msgstr ""
+msgstr "\n                Asegúrese de que su navegador permite cookies para este sitio.\n                "
 
 #: templates/4xx.html:27
 msgid ""
@@ -376,7 +377,7 @@ msgid ""
 "                that block Referer headers, and disable them for\n"
 "                this site.\n"
 "                "
-msgstr ""
+msgstr "\n                Revise el navegador por cualquier configuración de privacidad o extensiones \n                que bloqueen los header referidos, y desactívelos para este sitio.\n                "
 
 #: templates/4xx.html:35
 msgid "Method not allowed (405)"
@@ -392,14 +393,14 @@ msgid ""
 "\n"
 "            Your Zulip chat cannot be loaded because the server is experiencing technical difficulties.\n"
 "            "
-msgstr ""
+msgstr "\n            Su chat Zulip no puede ser cargado debido a que el servidor está experimentando dificultades técnicas.\n            "
 
 #: templates/500.html:23
 msgid ""
 "\n"
 "            This page will reload automatically when service is restored.\n"
 "            "
-msgstr ""
+msgstr "\n            Esta página se recargará automáticamente cuando el servicio sea restaurado.\n            "
 
 #: templates/500.html:27
 #, python-format
@@ -407,7 +408,7 @@ msgid ""
 "\n"
 "                In the meantime, you can <a href=\"mailto:%(support_email)s\">contact Zulip support</a>.\n"
 "                "
-msgstr ""
+msgstr "\n                Mientras tanto, puede <a href=\"mailto:%(support_email)s\">contactar con el soporte de Zulip</a>.\n                "
 
 #: templates/500.html:31
 #, python-format
@@ -416,7 +417,7 @@ msgid ""
 "                In the meantime, you can <a href=\"mailto:%(support_email)s\">contact\n"
 "                this server's administrators</a> for support.\n"
 "                "
-msgstr ""
+msgstr "\n                Mientras tanto, puede <a href=\"mailto:%(support_email)s\">contactar\n                con el administrador del servidor</a> para recibir soporte.\n                "
 
 #: templates/500.html:39
 #, python-format
@@ -425,7 +426,7 @@ msgid ""
 "                If you administer this server, you may want to check out the\n"
 "                <a href=\"%(troubleshooting_url)s\">Zulip server troubleshooting guide</a>.\n"
 "                "
-msgstr ""
+msgstr "\n                Si administras este servidor, puede que quieras echar un vistazo a \n                <a href=\"%(troubleshooting_url)s\">la guía de solución de problemas para servidores Zulip</a>.\n                "
 
 #: templates/analytics/stats.html:6
 #, python-format

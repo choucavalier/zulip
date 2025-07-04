@@ -94,10 +94,6 @@
     {{t 'Delete draft' }}
     {{tooltip_hotkey_hints "Backspace"}}
 </template>
-<template id="restore-draft-tooltip-template">
-    {{t 'Restore draft' }}
-    {{tooltip_hotkey_hints "Enter"}}
-</template>
 <template id="gear-menu-tooltip-template">
     {{t 'Main menu' }}
     {{tooltip_hotkey_hints "G"}}
@@ -162,6 +158,12 @@
 <template id="scheduled-tooltip-template">
     <div class="views-tooltip-container" data-view-code="scheduled_message">
         <div>{{t 'Scheduled messages'}}</div>
+        <div class="tootlip-inner-content views-message-count italic"></div>
+    </div>
+</template>
+<template id="reminders-tooltip-template">
+    <div class="views-tooltip-container" data-view-code="reminders">
+        <div>{{t 'Reminders'}}</div>
         <div class="tootlip-inner-content views-message-count italic"></div>
     </div>
 </template>
@@ -253,12 +255,12 @@
     {{t "Mute topic" }}
     {{tooltip_hotkey_hints "Shift" "M"}}
 </template>
-<template id="restore-scheduled-message-tooltip-template">
-    {{t 'Edit and reschedule message' }}
-    {{tooltip_hotkey_hints "Enter"}}
-</template>
 <template id="delete-scheduled-message-tooltip-template">
     {{t 'Delete scheduled message' }}
+    {{tooltip_hotkey_hints "Backspace"}}
+</template>
+<template id="delete-reminder-tooltip-template">
+    {{t 'Delete reminder' }}
     {{tooltip_hotkey_hints "Backspace"}}
 </template>
 <template id="create-new-stream-tooltip-template">

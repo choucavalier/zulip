@@ -31,6 +31,7 @@ function MessageListView() {
             find(selector) {
                 assert.equal(selector, ".message_controls .reaction_button");
                 return {
+                    length: 1,
                     css(property) {
                         assert.equal(property, "display");
                         return "none";
@@ -53,6 +54,8 @@ mock_esm("../src/hash_util", {
 mock_esm("../src/stream_data", {
     is_subscribed: () => true,
     is_stream_archived: () => false,
+    get_sub_by_id: () => noop,
+    user_can_move_messages_within_channel: () => true,
 });
 mock_esm("../src/group_permission_settings", {
     get_group_permission_setting_config() {

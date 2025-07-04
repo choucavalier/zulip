@@ -685,3 +685,77 @@ A trivial change that should probably be ignored.
         expected_message = "Release v1.1 for tag v1.1 was deleted."
 
         self.check_webhook("release_hook__delete", expected_topic_name, expected_message)
+
+    def test_feature_flag_activate_event_message(self) -> None:
+        expected_topic_name = "sample"
+        expected_message = "kolanuvarun739 activated the feature flag [sample-feature-flag](https://gitlab.com/kolanuvarun/sample/-/feature_flags)."
+
+        self.check_webhook("feature_flag_hook__activated", expected_topic_name, expected_message)
+
+    def test_feature_flag_deactivate_event_message(self) -> None:
+        expected_topic_name = "sample"
+        expected_message = "kolanuvarun739 deactivated the feature flag [sample-feature-flag](https://gitlab.com/kolanuvarun/sample/-/feature_flags)."
+
+        self.check_webhook("feature_flag_hook__deactivated", expected_topic_name, expected_message)
+
+    def test_resource_access_token_project_expiry(self) -> None:
+        expected_topic_name = "Flight"
+        expected_message = "The access token [acd](https://example.com/flightjs/Flight/-/settings/access_tokens) will expire on Jan 26, 2024."
+
+        self.check_webhook(
+            "resource_access_token_hook__project_expiry", expected_topic_name, expected_message
+        )
+
+    def test_resource_access_token_group_expiry(self) -> None:
+        expected_topic_name = "Twitter"
+        expected_message = "The access token [acd](https://gitlab.com/groups/twitter/-/settings/access_tokens) will expire on Jan 26, 2024."
+
+        self.check_webhook(
+            "resource_access_token_hook__group_expiry", expected_topic_name, expected_message
+        )
+
+    def test_deployment_started_event_message(self) -> None:
+        expected_topic_name = "test / production"
+        expected_message = "[Vedant Joshi](https://gitlab.com/theofficialvedantjoshi) started a new [deployment](https://gitlab.com/vedant8600317/test/-/jobs/9905389091):\n> [5879366](https://gitlab.com/vedant8600317/test/-/commit/58793660b22d6ceacbdc23b28a0562bca339702c) Update .gitlab-ci.yml file"
+
+        self.check_webhook(
+            "deployment_hook__running",
+            expected_topic_name,
+            expected_message,
+            HTTP_X_GITLAB_EVENT="Deployment Hook",
+        )
+
+    def test_deployment_succeeded_event_message(self) -> None:
+        expected_topic_name = "test / production"
+        expected_message = "The [deployment](https://gitlab.com/vedant8600317/test/-/jobs/9905389091) was successful."
+
+        self.check_webhook(
+            "deployment_hook__success",
+            expected_topic_name,
+            expected_message,
+            HTTP_X_GITLAB_EVENT="Deployment Hook",
+        )
+
+    def test_deployment_failed_event_message(self) -> None:
+        expected_topic_name = "test / production"
+        expected_message = (
+            "The [deployment](https://gitlab.com/vedant8600317/test/-/jobs/9905759933) failed."
+        )
+
+        self.check_webhook(
+            "deployment_hook__failed",
+            expected_topic_name,
+            expected_message,
+            HTTP_X_GITLAB_EVENT="Deployment Hook",
+        )
+
+    def test_deployment_canceled_event_message(self) -> None:
+        expected_topic_name = "test / production"
+        expected_message = "The [deployment](https://gitlab.com/vedant8600317/test/-/jobs/9905830127) was canceled."
+
+        self.check_webhook(
+            "deployment_hook__canceled",
+            expected_topic_name,
+            expected_message,
+            HTTP_X_GITLAB_EVENT="Deployment Hook",
+        )

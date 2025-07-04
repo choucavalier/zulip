@@ -686,9 +686,13 @@ label {
     line-height: inherit;
 }
 
+button:focus {
+    outline: 0;
+}
+
 /* Bootstrap's focus outline uses -webkit-focus-ring-color which doesn't exist in Firefox */
 a:not(:active):focus,
-button:focus,
+button:focus-visible,
 label.checkbox input[type="checkbox"]:focus ~ .rendered-checkbox,
 i.fa:focus,
 i.zulip-icon:focus-visible,
@@ -698,7 +702,7 @@ i.zulip-icon:focus-visible,
 }
 
 /* List of text-like input types taken from Bootstrap */
-input {
+input:not(.input-element) {
     &[type="text"],
     &[type="password"],
     &[type="datetime"],
@@ -858,9 +862,7 @@ strong {
 .copy-paste-text {
     /* Hide the text that we want copy paste to capture */
     position: absolute;
-    text-indent: -99999px;
-    float: left;
-    width: 0;
+    left: -99999px;
 }
 
 @keyframes rotate {
@@ -988,7 +990,7 @@ div.focused-message-list.is-conversation-view .recipient_row {
     flex: 1;
     line-height: 1.2142em;
     padding: 0 5px;
-    color: hsl(0deg 0% 33%);
+    color: var(--color-text-default);
     border-radius: 4px;
     border: 1px solid hsl(0deg 0% 80%);
 
@@ -1221,12 +1223,12 @@ nav {
 }
 
 #loading_older_messages_indicator,
-#loading_newer_messages_indicator {
+#loading_more_indicator {
     margin: 10px;
 }
 
 #loading_older_messages_indicator_box_container,
-#loading_newer_messages_indicator_box_container {
+#loading_more_indicator_box_container {
     position: absolute;
     left: 50%;
 
@@ -1239,7 +1241,7 @@ nav {
 }
 
 #loading_older_messages_indicator_box,
-#loading_newer_messages_indicator_box {
+#loading_more_indicator_box {
     position: relative;
     left: -1.3571em; /* 50% of 38px = 19px at 14px/em */
     top: -3.0714em; /* -43px at 14px/em */
@@ -1346,7 +1348,7 @@ div.toggle_resolve_topic_spinner .loading_indicator_spinner {
     margin-right: 15px;
 
     padding: 4px 6px;
-    color: hsl(0deg 0% 33%);
+    color: var(--color-text-default);
     border-radius: 4px;
     border: 1px solid hsl(0deg 0% 80%);
     box-shadow: inset 0 1px 1px hsl(0deg 0% 0% / 7.5%);
@@ -2233,7 +2235,8 @@ body:not(.spectator-view) {
 .dropdown-list-container .list-item {
     color: var(--color-dropdown-item);
 
-    &:focus {
+    &:focus,
+    &.current_selection {
         background-color: var(--background-color-active-dropdown-item);
         outline: none;
     }
@@ -2251,7 +2254,7 @@ body:not(.spectator-view) {
             background-color: transparent;
         }
 
-        &.active {
+        &.current_user_setting {
             background-color: var(--background-color-active-dropdown-item);
             outline: none;
         }

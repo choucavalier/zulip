@@ -33,25 +33,13 @@ administrators.
 
 {tab|mobile}
 
-1. Navigate to a channel, topic, or direct message view.
+Access this feature by following the web app instructions in your
+mobile device browser.
 
-1. Tap the **Add video call**
-   ( <img src="/static/images/help/mobile-video-icon.svg" alt="video"
-   class="help-center-icon"/> )
-   icon at the bottom of the app. This will insert a **Click to join video call**
-   link into your message.
-
-1. If you are in a channel view, choose a destination topic by tapping the
-   compose box and selecting an existing topic or typing a new topic name.
-
-1. Send the message.
-
-1. Tap the link in the message to start or join the call.
-
-!!! tip ""
-
-    You can replace the "Click to join video call" label for the link with any
-    text you like.
+Implementation of this feature in the mobile app is tracked [on
+GitHub](https://github.com/zulip/zulip-flutter/issues/1000). If
+you're interested in this feature, please react to the issue's
+description with 👍.
 
 {end_tabs}
 

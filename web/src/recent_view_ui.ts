@@ -579,7 +579,7 @@ function get_avatars_context(all_senders: number[]): AvatarsContext {
         // and just display remaining number of senders.
         const remaining_senders = extra_sender_ids.length - MAX_EXTRA_SENDERS;
         // Pluralization syntax from:
-        // https://formatjs.io/docs/core-concepts/icu-syntax/#plural-format
+        // https://formatjs.github.io/docs/core-concepts/icu-syntax#plural-format
         displayed_other_names.push(
             $t(
                 {
@@ -1267,22 +1267,6 @@ function recenter_focus_if_off_screen(): void {
     }
 }
 
-function is_scroll_position_for_render(): boolean {
-    const scroll_position = window.scrollY;
-    const window_height = window.innerHeight;
-    // We allocate `--max-unmaximized-compose-height` in empty space
-    // below the last rendered row in recent view.
-    //
-    // We don't want user to see this empty space until there are no
-    // new rows to render when the user is scrolling to the bottom of
-    // the view. So, we render new rows when user has scrolled 2 / 3
-    // of (the total scrollable height - the empty space).
-    const compose_max_height = $("html").css("--max-unmaximized-compose-height");
-    assert(typeof compose_max_height === "string");
-    const scroll_max = document.body.scrollHeight - Number.parseInt(compose_max_height, 10);
-    return scroll_position + window_height >= (2 / 3) * scroll_max;
-}
-
 function callback_after_render(): void {
     // It is important to restore the scroll position as soon
     // as the rendering is complete to avoid scroll jumping.
@@ -1385,7 +1369,7 @@ export function complete_rerender(): void {
         html_selector: get_topic_row,
         $simplebar_container: $("html"),
         callback_after_render,
-        is_scroll_position_for_render,
+        is_scroll_position_for_render: views_util.is_scroll_position_for_render,
         post_scroll__pre_render_callback() {
             // Update the focused element for keyboard navigation if needed.
             recenter_focus_if_off_screen();
@@ -1981,19 +1965,13 @@ export function initialize({
 
     // Search for all table rows (this combines stream & topic names)
     $("body").on(
-        "keyup",
+        "input",
         "#recent_view_search",
         _.debounce(() => {
             update_filters_view();
             // Wait for user to go idle before initiating search.
         }, 300),
     );
-
-    $("body").on("click", "#recent_view_search_clear", (e) => {
-        e.stopPropagation();
-        $("#recent_view_search").val("");
-        update_filters_view();
-    });
 
     $("body").on("click", ".recent-view-load-more-container .fetch-messages-button", () => {
         $(".recent-view-load-more-container .button-label").toggleClass("invisible", true);

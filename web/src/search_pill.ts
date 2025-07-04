@@ -41,6 +41,9 @@ type SearchPill =
 
 export type SearchPillWidget = InputPillContainer<SearchPill>;
 
+// These operator types use user pills as operands.
+const user_pill_operators = new Set(["dm", "dm-including", "sender"]);
+
 export function create_item_from_search_string(search_string: string): SearchPill | undefined {
     const search_term = util.the(Filter.parse(search_string));
     if (!Filter.is_valid_search_term(search_term)) {
@@ -166,8 +169,6 @@ function append_user_pill(
     pill_widget.clear_text();
 }
 
-const user_pill_operators = new Set(["dm", "dm-including", "sender"]);
-
 export function set_search_bar_contents(
     search_terms: NarrowTerm[],
     pill_widget: SearchPillWidget,
@@ -178,9 +179,13 @@ export function set_search_bar_contents(
     let partial_pill = "";
     const invalid_inputs = [];
     const search_operator_strings = [];
+    const added_pills_as_input_strings = new Set(); // to prevent duplicating terms
 
     for (const term of search_terms) {
         const input = Filter.unparse([term]);
+        if (added_pills_as_input_strings.has(input)) {
+            return;
+        }
 
         // If the last term looks something like `dm:`, we
         // don't want to make it a pill, since it isn't isn't
@@ -215,10 +220,13 @@ export function set_search_bar_contents(
                 return user;
             });
             append_user_pill(users, pill_widget, term.operator, term.negated ?? false);
+            added_pills_as_input_strings.add(input);
         } else if (term.operator === "search") {
+            // This isn't a pill, so we don't add it to `added_pills_as_input_strings`
             search_operator_strings.push(input);
         } else {
             pill_widget.appendValue(input);
+            added_pills_as_input_strings.add(input);
         }
     }
     pill_widget.clear_text();

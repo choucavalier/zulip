@@ -35,9 +35,6 @@ const message_view_header = mock_esm("../src/message_view_header", {
 mock_esm("../src/recent_view_ui", {
     complete_rerender() {},
 });
-mock_esm("../src/settings_data", {
-    user_can_access_all_other_users: () => true,
-});
 mock_esm("../src/settings_notifications", {
     update_page() {},
     user_settings_panel: "stub", // Not used, but can't be undefined
@@ -281,6 +278,19 @@ test("update_property", ({override}) => {
         assert.equal(args.val, 20);
     }
 
+    // Test stream topics_policy change event
+    {
+        const stub = make_stub();
+        override(stream_settings_ui, "update_topics_policy_setting", stub.f);
+        override(compose_recipient, "update_topic_inputbox_on_topics_policy_change", noop);
+        override(compose_recipient, "update_compose_area_placeholder_text", noop);
+        stream_events.update_property(stream_id, "topics_policy", "allow_topics_policy");
+        assert.equal(stub.num_calls, 1);
+        const args = stub.get_args("sub", "val");
+        assert.equal(args.sub.stream_id, stream_id);
+        assert.equal(args.val, "allow_topics_policy");
+    }
+
     // Test stream can_remove_subscribers_group change event
     {
         const stub = make_stub();
@@ -328,6 +338,17 @@ test("update_property", ({override}) => {
         assert.equal(args.val, 3);
         args = update_subscription_elements_stub.get_args("sub");
         assert.equal(args.sub, sub);
+    }
+
+    // Update channel folder
+    {
+        const stub = make_stub();
+        override(stream_settings_ui, "update_channel_folder", stub.f);
+        stream_events.update_property(stream_id, "folder_id", 3);
+        assert.equal(stub.num_calls, 1);
+        const args = stub.get_args("sub", "value");
+        assert.equal(args.sub.stream_id, stream_id);
+        assert.equal(args.value, 3);
     }
 
     // Test archiving stream

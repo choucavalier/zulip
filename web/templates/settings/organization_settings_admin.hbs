@@ -19,17 +19,20 @@
                 {{> ../dropdown_widget_with_label
                   widget_name="realm_new_stream_announcements_stream_id"
                   label=admin_settings_label.realm_new_stream_announcements_stream
-                  value_type="number"}}
+                  value_type="number"
+                  custom_classes="decorated-stream-name-dropdown-widget"}}
 
                 {{> ../dropdown_widget_with_label
                   widget_name="realm_signup_announcements_stream_id"
                   label=admin_settings_label.realm_signup_announcements_stream
-                  value_type="number"}}
+                  value_type="number"
+                  custom_classes="decorated-stream-name-dropdown-widget"}}
 
                 {{> ../dropdown_widget_with_label
                   widget_name="realm_zulip_update_announcements_stream_id"
                   label=admin_settings_label.realm_zulip_update_announcements_stream
-                  value_type="number"}}
+                  value_type="number"
+                  custom_classes="decorated-stream-name-dropdown-widget"}}
 
                 {{> settings_checkbox
                   setting_name="realm_message_content_allowed_in_email_notifications"
@@ -123,11 +126,12 @@
                     </select>
                 </div>
 
-                {{> settings_checkbox
-                  setting_name="realm_mandatory_topics"
-                  prefix="id_"
-                  is_checked=realm_mandatory_topics
-                  label=admin_settings_label.realm_mandatory_topics}}
+                <div class="input-group">
+                    <label for="id_realm_topics_policy" class="settings-field-label">{{> realm_topics_policy_label .}}</label>
+                    <select name="realm_topics_policy" id="id_realm_topics_policy" class="prop-element settings_select bootstrap-focus-style" data-setting-widget-type="string">
+                        {{> dropdown_options_widget option_values=realm_topics_policy_values}}
+                    </select>
+                </div>
             </div>
         </div>
 

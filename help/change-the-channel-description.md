@@ -31,17 +31,13 @@ disabled. Use Markdown formatting to include a link to a website, Zulip
 
 {tab|mobile}
 
-{!mobile-all-channels-view.md!}
+Access this feature by following the web app instructions in your
+mobile device browser.
 
-{!channel-name-long-press-menu.md!}
-
-1. Tap **Channel settings**.
-
-1. Tap **Edit channel**, and enter a new description.
-
-1. Tap **Save**.
-
-{!channel-name-long-press-menu-tip.md!}
+Implementation of this feature in the mobile app is tracked [on
+GitHub](https://github.com/zulip/zulip-flutter/issues/1102). If
+you're interested in this feature, please react to the issue's
+description with 👍.
 
 {end_tabs}
 

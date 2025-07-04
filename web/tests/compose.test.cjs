@@ -50,7 +50,6 @@ const upload = mock_esm("../src/upload");
 const onboarding_steps = mock_esm("../src/onboarding_steps");
 mock_esm("../src/settings_data", {
     user_has_permission_for_group_setting: () => true,
-    user_can_access_all_other_users: () => true,
 });
 
 const compose_ui = zrequire("compose_ui");
@@ -127,6 +126,7 @@ const social = {
     name: "social",
     subscribed: true,
     can_send_message_group: 2,
+    topics_policy: "inherit",
 };
 stream_data.add_sub(social);
 
@@ -194,8 +194,8 @@ test_ui("send_message_success", ({override, override_rewire}) => {
     reset();
 
     const draft_model = drafts.draft_model;
-    override(draft_model, "deleteDraft", (draft_id) => {
-        assert.equal(draft_id, 100);
+    override(draft_model, "deleteDrafts", (draft_ids) => {
+        assert.deepEqual(draft_ids, [100]);
         draft_deleted = true;
     });
     override_rewire(echo, "reify_message_id", (local_id, message_id) => {
@@ -451,6 +451,7 @@ test_ui("handle_enter_key_with_preview_open", ({override, override_rewire}) => {
     override_rewire(compose, "send_message", () => {
         send_message_called = true;
     });
+    override(realm, "realm_topics_policy", "allow_empty_topic");
 
     compose.handle_enter_key_with_preview_open();
     fake_compose_box.assert_preview_mode_is_off();
@@ -636,6 +637,7 @@ test_ui("update_fade", ({override, override_rewire}) => {
     override_rewire(compose_recipient, "update_narrow_to_recipient_visibility", () => {
         update_narrow_to_recipient_visibility_called = true;
     });
+    override_rewire(compose_recipient, "update_recipient_row_attention_level", noop);
     override_rewire(compose_validate, "validate_and_update_send_button_status", noop);
     override_rewire(drafts, "update_compose_draft_count", noop);
     override(compose_pm_pill, "get_user_ids", () => []);

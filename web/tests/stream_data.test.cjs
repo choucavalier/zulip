@@ -829,6 +829,7 @@ test("stream_settings", ({override}) => {
         history_public_to_subscribers: false,
     });
     stream_data.update_message_retention_setting(sub, -1);
+    stream_data.update_topics_policy_setting(sub, "allow_topics_policy");
     stream_data.update_stream_permission_group_setting(
         "can_remove_subscribers_group",
         sub,
@@ -839,11 +840,14 @@ test("stream_settings", ({override}) => {
         sub,
         moderators_group.id,
     );
+    stream_data.update_channel_folder(sub, 3);
     assert.equal(sub.invite_only, false);
     assert.equal(sub.history_public_to_subscribers, false);
     assert.equal(sub.message_retention_days, -1);
+    assert.equal(sub.topics_policy, "allow_topics_policy");
     assert.equal(sub.can_remove_subscribers_group, moderators_group.id);
     assert.equal(sub.can_administer_channel_group, moderators_group.id);
+    assert.equal(sub.folder_id, 3);
 
     // For guest user only retrieve subscribed streams
     sub_rows = stream_settings_data.get_updated_unsorted_subs();
@@ -1514,6 +1518,76 @@ test("can_post_messages_in_stream", ({override}) => {
     assert.equal(stream_data.can_post_messages_in_stream(social), false);
 });
 
+test("can_move_messages_out_of_channel", ({override}) => {
+    const social = {
+        subscribed: true,
+        name: "social",
+        stream_id: 10,
+        can_administer_channel_group: nobody_group.id,
+        can_move_messages_out_of_channel_group: nobody_group.id,
+    };
+    const scotland = {
+        subscribed: true,
+        name: "scotland",
+        stream_id: 11,
+        can_administer_channel_group: nobody_group.id,
+        can_move_messages_out_of_channel_group: everyone_group.id,
+    };
+
+    override(realm, "realm_can_move_messages_between_channels_group", nobody_group.id);
+    override(current_user, "user_id", admin_user_id);
+    assert.equal(stream_data.user_can_move_messages_out_of_channel(social), false);
+    social.can_administer_channel_group = admins_group.id;
+    assert.equal(stream_data.user_can_move_messages_out_of_channel(social), true);
+
+    override(current_user, "user_id", moderator_user_id);
+    assert.equal(stream_data.user_can_move_messages_out_of_channel(social), false);
+
+    assert.equal(stream_data.user_can_move_messages_out_of_channel(scotland), true);
+
+    page_params.is_spectator = true;
+    assert.equal(stream_data.user_can_move_messages_out_of_channel(scotland), false);
+
+    page_params.is_spectator = false;
+    scotland.is_archived = true;
+    assert.equal(stream_data.user_can_move_messages_out_of_channel(scotland), false);
+});
+
+test("can_move_messages_within_channel", ({override}) => {
+    const social = {
+        subscribed: true,
+        name: "social",
+        stream_id: 10,
+        can_administer_channel_group: nobody_group.id,
+        can_move_messages_within_channel_group: nobody_group.id,
+    };
+    const scotland = {
+        subscribed: true,
+        name: "scotland",
+        stream_id: 11,
+        can_administer_channel_group: nobody_group.id,
+        can_move_messages_within_channel_group: everyone_group.id,
+    };
+
+    override(realm, "realm_can_move_messages_between_topics_group", nobody_group.id);
+    override(current_user, "user_id", admin_user_id);
+    assert.equal(stream_data.user_can_move_messages_within_channel(social), false);
+    social.can_administer_channel_group = admins_group.id;
+    assert.equal(stream_data.user_can_move_messages_within_channel(social), true);
+
+    override(current_user, "user_id", moderator_user_id);
+    assert.equal(stream_data.user_can_move_messages_within_channel(social), false);
+
+    assert.equal(stream_data.user_can_move_messages_within_channel(scotland), true);
+
+    page_params.is_spectator = true;
+    assert.equal(stream_data.user_can_move_messages_within_channel(scotland), false);
+
+    page_params.is_spectator = false;
+    scotland.is_archived = true;
+    assert.equal(stream_data.user_can_move_messages_within_channel(scotland), false);
+});
+
 test("can_unsubscribe_others", ({override}) => {
     const sub = {
         name: "Denmark",
@@ -1645,6 +1719,41 @@ test("can_subscribe_others", ({override}) => {
     sub.can_administer_channel_group = students.id;
     initialize_and_override_current_user(test_user.user_id, override);
     assert.equal(stream_data.can_subscribe_others(sub), false);
+});
+
+test("user_can_set_topics_policy", ({override}) => {
+    const sub = {
+        name: "Denmark",
+        subscribed: true,
+        color: "red",
+        stream_id: 1,
+        can_add_subscribers_group: admins_group.id,
+        can_administer_channel_group: nobody_group.id,
+        can_remove_subscribers_group: admins_group.id,
+    };
+    stream_data.add_sub(sub);
+
+    override(realm, "realm_can_set_topics_policy_group", nobody_group.id);
+    // Admins can always change per-channel topics policy.
+    initialize_and_override_current_user(admin_user_id, override);
+    override(current_user, "is_admin", true);
+    assert.equal(stream_data.user_can_set_topics_policy(sub), true);
+
+    initialize_and_override_current_user(moderator_user_id, override);
+    override(current_user, "is_admin", false);
+    assert.equal(stream_data.user_can_set_topics_policy(sub), false);
+
+    // Not allowed as user not in can_administer_channel_group.
+    override(realm, "realm_can_set_topics_policy_group", everyone_group.id);
+    assert.equal(stream_data.user_can_set_topics_policy(sub), false);
+
+    sub.can_administer_channel_group = moderators_group.id;
+    assert.equal(stream_data.user_can_set_topics_policy(sub), true);
+
+    // Only realm_can_set_topics_policy_group is checked if sub is not provided.
+    assert.equal(stream_data.user_can_set_topics_policy(), true);
+    override(realm, "realm_can_set_topics_policy_group", nobody_group.id);
+    assert.equal(stream_data.user_can_set_topics_policy(sub), false);
 });
 
 test("options for dropdown widget", () => {

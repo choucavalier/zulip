@@ -23,15 +23,12 @@
 
 {tab|mobile}
 
-{!mobile-all-channels-view.md!}
+Access this feature by following the web app instructions in your
+mobile device browser.
 
-1. Tap the **Create new channel** button at the top of the app.
-
-1. Fill out the requested info, and tap **Create**.
-
-!!! warn ""
-
-    **Note**: You will only see the **Create new channel** button if you have
-    permission to create channels.
+Implementation of this feature in the mobile app is tracked [on
+GitHub](https://github.com/zulip/zulip-flutter/issues/1572). If
+you're interested in this feature, please react to the issue's
+description with 👍.
 
 {end_tabs}

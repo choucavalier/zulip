@@ -151,11 +151,13 @@ formatted for you. You can paste as plain text if you prefer with
 
 {tab|mobile}
 
-{!topic-long-press-menu.md!}
+Access this feature by following the web app instructions in your
+mobile device browser.
 
-1. Tap **Copy link to topic**.
-
-{!topic-long-press-menu-tip.md!}
+Implementation of this feature in the mobile app is tracked [on
+GitHub](https://github.com/zulip/zulip-flutter/issues/792). If
+you're interested in this feature, please react to the issue's
+description with 👍.
 
 {end_tabs}
 
@@ -171,11 +173,13 @@ formatted for you. You can paste as plain text if you prefer with
 
 {tab|mobile}
 
-{!channel-long-press-menu.md!}
+Access this feature by following the web app instructions in your
+mobile device browser.
 
-1. Tap **Copy link to channel**.
-
-{!channel-long-press-menu-tip.md!}
+Implementation of this feature in the mobile app is tracked [on
+GitHub](https://github.com/zulip/zulip-flutter/issues/1227). If
+you're interested in this feature, please react to the issue's
+description with 👍.
 
 {end_tabs}
 

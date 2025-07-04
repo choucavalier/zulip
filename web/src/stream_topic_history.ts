@@ -1,11 +1,11 @@
 import assert from "minimalistic-assert";
 
-import {all_messages_data} from "./all_messages_data.ts";
+import * as resolved_topics from "../shared/src/resolved_topic.ts";
+
 import * as echo_state from "./echo_state.ts";
 import {FoldDict} from "./fold_dict.ts";
 import * as message_util from "./message_util.ts";
 import * as sub_store from "./sub_store.ts";
-import type {StreamSubscription} from "./sub_store.ts";
 import * as unread from "./unread.ts";
 
 // stream_id -> PerStreamHistory object
@@ -22,60 +22,6 @@ export function set_update_topic_last_message_id(
     update_topic_last_message_id = f;
 }
 
-export function all_topics_in_cache(sub: StreamSubscription): boolean {
-    // Checks whether this browser's cache of contiguous messages
-    // (used to locally render narrows) in all_messages_data has all
-    // messages from a given stream. Because all_messages_data is a range,
-    // we just need to compare it to the range of history on the stream.
-
-    // If the cache isn't initialized, it's a clear false.
-    if (all_messages_data === undefined || all_messages_data.empty()) {
-        return false;
-    }
-
-    // If the cache doesn't have the latest messages, we can't be sure
-    // we have all topics.
-    if (!all_messages_data.fetch_status.has_found_newest()) {
-        return false;
-    }
-
-    if (sub.first_message_id === null) {
-        // If the stream has no message history, we have it all
-        // vacuously.  This should be a very rare condition, since
-        // stream creation sends a message.
-        return true;
-    }
-
-    // Now, we can just compare the first cached message to the first
-    // message ID in the stream; if it's older, we're good, otherwise,
-    // we might be missing the oldest topics in this stream in our
-    // cache.
-    const first_cached_message = all_messages_data.first();
-    return first_cached_message!.id <= sub.first_message_id;
-}
-
-export function is_complete_for_stream_id(stream_id: number): boolean {
-    if (fetched_stream_ids.has(stream_id)) {
-        return true;
-    }
-
-    const sub = sub_store.get(stream_id);
-    const in_cache = sub !== undefined && all_topics_in_cache(sub);
-
-    if (in_cache) {
-        /*
-            If the stream is cached, we can add it to
-            fetched_stream_ids.  Note that for the opposite
-            scenario, we don't delete from
-            fetched_stream_ids, because we may just be
-            waiting for the initial message fetch.
-        */
-        fetched_stream_ids.add(stream_id);
-    }
-
-    return in_cache;
-}
-
 export function stream_has_topics(stream_id: number): boolean {
     if (!stream_dict.has(stream_id)) {
         return false;
@@ -85,6 +31,17 @@ export function stream_has_topics(stream_id: number): boolean {
     assert(history !== undefined);
 
     return history.has_topics();
+}
+
+export function stream_has_locally_available_resolved_topics(stream_id: number): boolean {
+    if (!stream_dict.has(stream_id)) {
+        return false;
+    }
+
+    const history = stream_dict.get(stream_id);
+    assert(history !== undefined);
+
+    return history.has_resolved_topics();
 }
 
 export type TopicHistoryEntry = {
@@ -121,6 +78,10 @@ export class PerStreamHistory {
 
     constructor(stream_id: number) {
         this.stream_id = stream_id;
+    }
+
+    has_resolved_topics(): boolean {
+        return [...this.topics.keys()].some((topic) => resolved_topics.is_resolved(topic));
     }
 
     has_topics(): boolean {
@@ -354,6 +315,10 @@ export function add_history(stream_id: number, server_history: ServerTopicHistor
 
 export function has_history_for(stream_id: number): boolean {
     return fetched_stream_ids.has(stream_id);
+}
+
+export function mark_history_fetched_for(stream_id: number): void {
+    fetched_stream_ids.add(stream_id);
 }
 
 export let get_recent_topic_names = (stream_id: number): string[] => {

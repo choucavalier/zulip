@@ -125,6 +125,7 @@ from zerver.actions.streams import (
     do_change_subscription_property,
     do_deactivate_stream,
     do_rename_stream,
+    do_set_stream_property,
     do_unarchive_stream,
 )
 from zerver.actions.submessage import do_add_submessage
@@ -296,10 +297,11 @@ from zerver.models import (
     UserStatus,
     UserTopic,
 )
+from zerver.models.bots import get_bot_services
 from zerver.models.clients import get_client
 from zerver.models.groups import SystemGroups
 from zerver.models.realm_audit_logs import AuditLogEventType
-from zerver.models.streams import get_stream
+from zerver.models.streams import StreamTopicsPolicyEnum, get_stream
 from zerver.models.users import get_user_by_delivery_email
 from zerver.openapi.openapi import validate_against_openapi_schema
 from zerver.tornado.django_api import send_event_rollback_unsafe
@@ -495,13 +497,25 @@ class BaseAction(ZulipTestCase):
                 for u in state["never_subscribed"]:
                     if "subscribers" in u:
                         u["subscribers"].sort()
+                    # this isn't guaranteed to match
+                    del u["subscriber_count"]
             if "subscriptions" in state:
                 for u in state["subscriptions"]:
                     if "subscribers" in u:
                         u["subscribers"].sort()
+                    # this isn't guaranteed to match
+                    del u["subscriber_count"]
                 state["subscriptions"] = {u["name"]: u for u in state["subscriptions"]}
             if "unsubscribed" in state:
+                for u in state["unsubscribed"]:
+                    # this isn't guaranteed to match
+                    del u["subscriber_count"]
                 state["unsubscribed"] = {u["name"]: u for u in state["unsubscribed"]}
+            if "streams" in state:
+                for stream in state["streams"]:
+                    if "subscriber_count" in stream:
+                        # this isn't guaranteed to match
+                        del stream["subscriber_count"]
             if "realm_bots" in state:
                 state["realm_bots"] = {u["email"]: u for u in state["realm_bots"]}
             # Since time is different for every call, just fix the value
@@ -629,13 +643,14 @@ class NormalActionsTest(BaseAction):
                 )
 
     def test_pm_send_message_events(self) -> None:
-        with self.verify_action():
+        with self.verify_action() as events:
             self.send_personal_message(
                 self.example_user("cordelia"),
                 self.example_user("hamlet"),
                 "hola",
                 skip_capture_on_commit_callbacks=True,
             )
+        self.assertEqual(events[0]["message"][TOPIC_NAME], "")
 
         # Verify direct message editing - content only edit
         pm = Message.objects.order_by("-id")[0]
@@ -683,13 +698,14 @@ class NormalActionsTest(BaseAction):
             self.example_user("hamlet"),
             self.example_user("othello"),
         ]
-        with self.verify_action():
+        with self.verify_action() as events:
             self.send_group_direct_message(
                 self.example_user("cordelia"),
                 direct_message_group,
                 "hola",
                 skip_capture_on_commit_callbacks=True,
             )
+        self.assertEqual(events[0]["message"][TOPIC_NAME], "")
 
     def test_user_creation_events_on_sending_messages(self) -> None:
         self.set_up_db_for_testing_user_access()
@@ -1039,9 +1055,15 @@ class NormalActionsTest(BaseAction):
         # Verify move topic to different stream.
         self.subscribe(self.user_profile, "Verona")
         self.subscribe(self.user_profile, "Denmark")
-        self.send_stream_message(iago, "Verona")
+        # Message passed to the message edit request is usually last in
+        # event["message_ids"]. Since we want to test sorting of these
+        # message_ids later on, we need send the message_id to be used
+        # in the message_edit_request first; Otherwise
+        # event["message_ids"] would be sorted even without any sorting
+        # function.
         message_id = self.send_stream_message(self.user_profile, "Verona")
         message = Message.objects.get(id=message_id)
+        self.send_stream_message(iago, "Verona")
         stream = get_stream("Denmark", self.user_profile.realm)
         propagate_mode = "change_all"
         prior_mention_user_ids = set()
@@ -1080,6 +1102,8 @@ class NormalActionsTest(BaseAction):
             has_new_stream_id=True,
             is_embedded_update_only=False,
         )
+        # Make sure the message_ids returned are sorted.
+        self.assertEqual(events[0]["message_ids"], sorted(events[0]["message_ids"]))
 
         # Move both stream and topic, with update_message_flags
         # excluded from event types.
@@ -3494,8 +3518,38 @@ class NormalActionsTest(BaseAction):
             interface_type=Service.GENERIC,
         )
         with self.verify_action() as events:
-            do_update_outgoing_webhook_service(bot, 2, "http://hostname.domain2.com")
+            do_update_outgoing_webhook_service(
+                bot,
+                interface=2,
+                base_url="http://hostname.domain2.com",
+                acting_user=self.user_profile,
+            )
+
         check_realm_bot_update("events[0]", events[0], "services")
+
+        # Check the updated Service data we send as event on commit.
+        bot_service = get_bot_services(bot.id)[0]
+        event_data_service = events[0]["bot"]["services"][0]
+        self.assertEqual(
+            {
+                "base_url": bot_service.base_url,
+                "interface": bot_service.interface,
+                "token": bot_service.token,
+            },
+            event_data_service,
+        )
+
+        with self.verify_action(num_events=0, state_change_expected=False) as events:
+            do_update_outgoing_webhook_service(bot, acting_user=self.user_profile)
+
+        # Trying to update with the same value as existing value results in no op.
+        with self.verify_action(num_events=0, state_change_expected=False) as events:
+            do_update_outgoing_webhook_service(
+                bot,
+                interface=2,
+                base_url="http://hostname.domain2.com",
+                acting_user=self.user_profile,
+            )
 
     def test_do_deactivate_bot(self) -> None:
         bot = self.create_bot("test")
@@ -3929,7 +3983,10 @@ class NormalActionsTest(BaseAction):
         hamlet = self.example_user("hamlet")
         msg_id = self.send_stream_message(hamlet, "Verona")
         msg_id_2 = self.send_stream_message(hamlet, "Verona")
-        messages = [Message.objects.get(id=msg_id), Message.objects.get(id=msg_id_2)]
+        # Pass messages in reverse sorted order, so we can test that
+        # the backend is sorting the messages_ids sent in the delete
+        # event.
+        messages = [Message.objects.get(id=msg_id_2), Message.objects.get(id=msg_id)]
         with self.verify_action(state_change_expected=True) as events:
             do_delete_messages(self.user_profile.realm, messages, acting_user=None)
         check_delete_message(
@@ -3939,6 +3996,7 @@ class NormalActionsTest(BaseAction):
             num_message_ids=2,
             is_legacy=False,
         )
+        self.assertEqual(events[0]["message_ids"], sorted(events[0]["message_ids"]))
 
     def test_do_delete_message_stream_legacy(self) -> None:
         """
@@ -4259,6 +4317,7 @@ class RealmPropertyActionTest(BaseAction):
             message_content_edit_limit_seconds=[1000, 1100, 1200, None],
             move_messages_within_stream_limit_seconds=[1000, 1100, 1200, None],
             move_messages_between_streams_limit_seconds=[1000, 1100, 1200, None],
+            topics_policy=Realm.REALM_TOPICS_POLICY_TYPES,
         )
 
         vals = test_values.get(name)
@@ -4326,6 +4385,7 @@ class RealmPropertyActionTest(BaseAction):
             if name in [
                 "allow_message_editing",
                 "message_content_edit_limit_seconds",
+                "topics_policy",
             ]:
                 check_realm_update_dict("events[0]", events[0])
             else:
@@ -4704,7 +4764,7 @@ class UserDisplayActionTest(BaseAction):
             web_home_view=["all_messages", "inbox", "recent_topics"],
             demote_inactive_streams=[2, 3, 1],
             web_mark_read_on_scroll_policy=[2, 3, 1],
-            web_channel_default_view=[2, 1, 3],
+            web_channel_default_view=[2, 1, 3, 4],
             user_list_style=[1, 2, 3],
             web_animate_image_previews=["always", "on_hover", "never"],
             web_stream_unreads_count_display_policy=[1, 2, 3],
@@ -4978,7 +5038,7 @@ class SubscribeActionTest(BaseAction):
         check_stream_update("events[0]", events[0])
         check_message("events[1]", events[1])
 
-        channel_folder = check_add_channel_folder("Frontend", "", acting_user=iago)
+        channel_folder = check_add_channel_folder(realm, "Frontend", "", acting_user=iago)
         with self.verify_action(include_subscribers=include_subscribers) as events:
             do_change_stream_folder(stream, channel_folder, acting_user=iago)
         check_stream_update("events[0]", events[0])
@@ -5083,6 +5143,15 @@ class SubscribeActionTest(BaseAction):
         self.user_profile = self.example_user("hamlet")
         with self.verify_action(include_subscribers=include_subscribers, num_events=2) as events:
             do_change_stream_message_retention_days(stream, self.example_user("hamlet"), -1)
+        check_stream_update("events[0]", events[0])
+
+        with self.verify_action(include_subscribers=include_subscribers, num_events=2) as events:
+            do_set_stream_property(
+                stream,
+                "topics_policy",
+                StreamTopicsPolicyEnum.allow_empty_topic.value,
+                self.example_user("hamlet"),
+            )
         check_stream_update("events[0]", events[0])
 
         for setting_name in Stream.stream_permission_group_settings:
@@ -5494,12 +5563,20 @@ class ChannelFolderActionTest(BaseAction):
         folder_name = "Frontend"
         folder_description = "Channels for **frontend** discussions"
         with self.verify_action() as events:
-            check_add_channel_folder(folder_name, folder_description, acting_user=self.user_profile)
+            check_add_channel_folder(
+                self.user_profile.realm,
+                folder_name,
+                folder_description,
+                acting_user=self.user_profile,
+            )
         check_channel_folder_add("events[0]", events[0])
 
     def test_channel_folder_update_event(self) -> None:
         channel_folder = check_add_channel_folder(
-            "Frontend", "Channels for frontend discussion", acting_user=self.user_profile
+            self.user_profile.realm,
+            "Frontend",
+            "Channels for frontend discussion",
+            acting_user=self.user_profile,
         )
         iago = self.example_user("iago")
 

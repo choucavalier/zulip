@@ -164,9 +164,9 @@ function update_add_members_elements(group: UserGroup): void {
         $button_element.prop("disabled", true);
         $add_members_container.addClass("add_members_disabled");
 
-        const disable_hint = group.deactivated
-            ? $t({defaultMessage: "Can't add members to a deactivated group"})
-            : $t({defaultMessage: "You are not allowed to add members to this group"});
+        const disable_hint = $t({
+            defaultMessage: "You are not allowed to add members to this group",
+        });
         settings_components.initialize_disable_button_hint_popover(
             $add_members_container,
             disable_hint,
@@ -309,13 +309,8 @@ function initialize_tooltip_for_membership_button(group_id: number): void {
         ".join_leave_button_wrapper",
     );
     const is_member = user_groups.is_user_in_group(group_id, people.my_current_user_id());
-    const is_deactivated = user_groups.get_user_group_from_id(group_id).deactivated;
     let tooltip_message;
-    if (is_deactivated && is_member) {
-        tooltip_message = $t({defaultMessage: "You cannot leave a deactivated user group."});
-    } else if (is_deactivated) {
-        tooltip_message = $t({defaultMessage: "You cannot join a deactivated user group."});
-    } else if (is_member) {
+    if (is_member) {
         tooltip_message = $t({defaultMessage: "You do not have permission to leave this group."});
     } else {
         tooltip_message = $t({defaultMessage: "You do not have permission to join this group."});
@@ -1551,7 +1546,6 @@ export function change_state(
     if (section === "new") {
         do_open_create_user_group();
         redraw_user_group_list();
-        resize.resize_settings_creation_overlay();
         return;
     }
 
@@ -1945,7 +1939,7 @@ export function setup_page(callback: () => void): void {
                 },
             },
             init_sort: ["alphabetic", "name"],
-            $simplebar_container: $container,
+            $simplebar_container: $("#groups_overlay .user-groups-list-wrapper"),
         });
 
         initialize_components();
@@ -2161,6 +2155,7 @@ export function initialize(): void {
     $("#groups_overlay_container").on("click", ".fa-chevron-left", () => {
         $(".right").removeClass("show");
         $("#groups_overlay_container .two-pane-settings-header").removeClass("slide-left");
+        resize.resize_settings_overlay_subheader_for_narrow_screens($("#groups_overlay_container"));
     });
 
     $("#groups_overlay_container").on(
@@ -2277,7 +2272,7 @@ export function launch(
             },
         });
         change_state(section, left_side_tab, right_side_tab);
-        resize.resize_settings_overlay();
+        resize.resize_settings_overlay($("#groups_overlay_container"));
         update_group_creation_ui();
     });
     if (!get_active_data().id) {

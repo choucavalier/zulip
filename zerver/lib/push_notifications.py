@@ -95,6 +95,7 @@ def get_message_stream_name_from_database(message: Message) -> str:
     return Stream.objects.get(id=stream_id).name
 
 
+@dataclass
 class UserPushIdentityCompat:
     """Compatibility class for supporting the transition from remote servers
     sending their UserProfile ids to the bouncer to sending UserProfile uuids instead.
@@ -104,10 +105,11 @@ class UserPushIdentityCompat:
     may be represented either by an id or uuid.
     """
 
-    def __init__(self, user_id: int | None = None, user_uuid: str | None = None) -> None:
-        assert user_id is not None or user_uuid is not None
-        self.user_id = user_id
-        self.user_uuid = user_uuid
+    user_id: int | None = None
+    user_uuid: str | None = None
+
+    def __post_init__(self) -> None:
+        assert self.user_id is not None or self.user_uuid is not None
 
     def filter_q(self) -> Q:
         """
@@ -135,12 +137,6 @@ class UserPushIdentityCompat:
             result += f"<uuid:{self.user_uuid}>"
 
         return result
-
-    @override
-    def __eq__(self, other: object) -> bool:
-        if isinstance(other, UserPushIdentityCompat):
-            return self.user_id == other.user_id and self.user_uuid == other.user_uuid
-        return False
 
 
 #
@@ -1000,7 +996,12 @@ def get_message_payload(
         data["topic"] = get_topic_display_name(message.topic_name(), user_profile.default_language)
     elif message.recipient.type == Recipient.DIRECT_MESSAGE_GROUP:
         data["recipient_type"] = "private"
-        data["pm_users"] = direct_message_group_users(message.recipient.id)
+        # For group DMs, we need to fetch the users for the pm_users field.
+        # Note that this doesn't do a separate database query, because both
+        # functions use the get_display_recipient_by_id cache.
+        recipients = get_display_recipient(message.recipient)
+        if len(recipients) > 2:
+            data["pm_users"] = direct_message_group_users(message.recipient.id)
     else:  # Recipient.PERSONAL
         data["recipient_type"] = "private"
 
@@ -1014,7 +1015,8 @@ def get_apns_alert_title(message: Message, language: str) -> str:
     if message.recipient.type == Recipient.DIRECT_MESSAGE_GROUP:
         recipients = get_display_recipient(message.recipient)
         assert isinstance(recipients, list)
-        return ", ".join(sorted(r["full_name"] for r in recipients))
+        if len(recipients) > 2:
+            return ", ".join(sorted(r["full_name"] for r in recipients))
     elif message.is_stream_message():
         stream_name = get_message_stream_name_from_database(message)
         topic_display_name = get_topic_display_name(message.topic_name(), language)
@@ -1057,6 +1059,10 @@ def get_apns_alert_subtitle(
         return _("{full_name} mentioned everyone:").format(full_name=sender_name)
     elif message.recipient.type == Recipient.PERSONAL:
         return ""
+    elif message.recipient.type == Recipient.DIRECT_MESSAGE_GROUP:
+        recipients = get_display_recipient(message.recipient)
+        if len(recipients) <= 2:
+            return ""
     # For group direct messages, or regular messages to a stream,
     # just use a colon to indicate this is the sender.
     return sender_name + ":"
@@ -1331,7 +1337,6 @@ def handle_push_notification(user_profile_id: int, missed_message: dict[str, Any
                     "Could not find UserMessage with message_id %s and user_id %s",
                     missed_message["message_id"],
                     user_profile_id,
-                    exc_info=True,
                 )
                 return
 

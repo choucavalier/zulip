@@ -262,15 +262,15 @@ def import_realm_from_slack(*args: Any, **kwargs: Any) -> HttpResponse:
 def registration_helper(
     request: HttpRequest,
     *,
-    key: str = "",
-    timezone: Annotated[str, timezone_or_empty_validator()] = "",
-    from_confirmation: str | None = None,
-    form_full_name: Annotated[str | None, ApiParamConfig("full_name")] = None,
-    source_realm_id: Annotated[NonNegativeInt | None, non_negative_int_or_none_validator()] = None,
-    form_is_demo_organization: Annotated[str | None, ApiParamConfig("is_demo_organization")] = None,
-    slack_access_token: str | None = None,
-    start_slack_import: Json[bool] = False,
     cancel_import: Json[bool] = False,
+    form_full_name: Annotated[str | None, ApiParamConfig("full_name")] = None,
+    form_is_demo_organization: Annotated[str | None, ApiParamConfig("is_demo_organization")] = None,
+    from_confirmation: str | None = None,
+    key: str = "",
+    slack_access_token: str | None = None,
+    source_realm_id: Annotated[NonNegativeInt | None, non_negative_int_or_none_validator()] = None,
+    start_slack_import: Json[bool] = False,
+    timezone: Annotated[str, timezone_or_empty_validator()] = "",
 ) -> HttpResponse:
     try:
         prereg_object, realm_creation = check_prereg_key(request, key)
@@ -361,8 +361,11 @@ def registration_helper(
             }
 
             saved_slack_access_token = prereg_realm.data_import_metadata.get("slack_access_token")
-            if saved_slack_access_token or slack_access_token:
-                if slack_access_token and slack_access_token != saved_slack_access_token:
+            if saved_slack_access_token or slack_access_token is not None:
+                if (
+                    slack_access_token is not None
+                    and slack_access_token != saved_slack_access_token
+                ):
                     # Verify slack token access.
                     from zerver.data_import.slack import (
                         SLACK_IMPORT_TOKEN_SCOPES,
@@ -386,6 +389,9 @@ def registration_helper(
                 context["slack_access_token"] = saved_slack_access_token
                 context["uploaded_import_file_name"] = prereg_realm.data_import_metadata.get(
                     "uploaded_import_file_name"
+                )
+                context["invalid_file_error_message"] = prereg_realm.data_import_metadata.get(
+                    "invalid_file_error_message", ""
                 )
 
             return TemplateResponse(
@@ -608,7 +614,12 @@ def registration_helper(
                 pass
         form = RegistrationForm(postdata, realm_creation=realm_creation, realm=realm)
 
-    if not (password_auth_enabled(realm) and password_required):
+    if realm_creation and demo_organization_creation:
+        # TODO: Remove settings.DEVELOPMENT when demo organization feature ready
+        # to be fully implemented.
+        assert settings.DEVELOPMENT
+        form["password"].field.required = False
+    elif not (password_auth_enabled(realm) and password_required):
         form["password"].field.required = False
 
     if form.is_valid():
@@ -617,7 +628,8 @@ def registration_helper(
         else:
             # If the user wasn't prompted for a password when
             # completing the authentication form (because they're
-            # signing up with SSO and no password is required), set
+            # signing up with SSO and no password is required, or
+            # because they're creating a new demo organization), set
             # the password field to `None` (Which causes Django to
             # create an unusable password).
             password = None
@@ -768,10 +780,7 @@ def registration_helper(
                     # user-friendly error message, but it doesn't
                     # particularly matter, because the registration form
                     # is hidden for most users.
-                    view_url = reverse("login")
-                    query = urlencode({"email": email})
-                    redirect_url = append_url_query_string(view_url, query)
-                    return HttpResponseRedirect(redirect_url)
+                    return HttpResponseRedirect(reverse("login", query={"email": email}))
             else:
                 assert isinstance(user, UserProfile)
                 user_profile = user
@@ -935,12 +944,12 @@ def prepare_activation_url(
     email: str,
     session: SessionBase,
     *,
+    include_realm_default_subscriptions: bool | None = None,
+    invited_as: int | None = None,
+    multiuse_invite: MultiuseInvite | None = None,
     realm: Realm | None,
     streams: Iterable[Stream] | None = None,
     user_groups: Iterable[NamedUserGroup] | None = None,
-    invited_as: int | None = None,
-    include_realm_default_subscriptions: bool | None = None,
-    multiuse_invite: MultiuseInvite | None = None,
 ) -> str:
     """
     Send an email with a confirmation link to the provided e-mail so the user
@@ -1029,11 +1038,7 @@ def send_confirm_registration_email(
 
 
 def redirect_to_email_login_url(email: str) -> HttpResponseRedirect:
-    login_url = reverse("login")
-    redirect_url = append_url_query_string(
-        login_url, urlencode({"email": email, "already_registered": 1})
-    )
-    return HttpResponseRedirect(redirect_url)
+    return HttpResponseRedirect(reverse("login", query={"email": email, "already_registered": 1}))
 
 
 @typed_endpoint
@@ -1059,7 +1064,22 @@ def realm_import_status(
         # TODO: Either store the path to the temporary conversion directory on
         # preregistration_realm.data_import_metadata, or have the conversion
         # process support writing updates to this for a better progress indicator.
-        return json_success(request, {"status": _("Converting Slack data…")})
+        if preregistration_realm.data_import_metadata.get("is_import_work_queued"):
+            return json_success(
+                request, {"status": _("Converting Slack data… This may take a while.")}
+            )
+        elif preregistration_realm.data_import_metadata.get("invalid_file_error_message"):
+            # Redirect user the file upload page if we have an error message to display.
+            result = {
+                "status": preregistration_realm.data_import_metadata.get(
+                    "invalid_file_error_message"
+                ),
+                "redirect": reverse(
+                    "get_prereg_key_and_redirect", kwargs={"confirmation_key": confirmation_key}
+                ),
+            }
+            return json_success(request, result)
+        # TODO: If there is something we need to fix for the import, we should notify the user.
 
     if realm.deactivated:
         # These "if" cases are in the inverse order than they're done
@@ -1074,15 +1094,15 @@ def realm_import_status(
             pass
         return json_success(request, {"status": _("Importing converted Slack data…")})
 
-    if (
-        not preregistration_realm.data_import_metadata["need_select_realm_owner"]
-        and preregistration_realm.created_realm is None
-    ):
+    need_select_realm_owner = preregistration_realm.data_import_metadata.get(
+        "need_select_realm_owner", False
+    )
+    if not need_select_realm_owner and preregistration_realm.created_realm is None:
         return json_success(request, {"status": _("Finalizing import…")})
 
     # We have a non-deactivated realm and it's linked to the prereg key
     result = {"status": _("Done!")}
-    if not preregistration_realm.data_import_metadata["need_select_realm_owner"]:
+    if not need_select_realm_owner:
         importing_user = get_user_by_delivery_email(preregistration_realm.email, realm)
         # Sanity check that this is a normal user account that can login.
         assert (
@@ -1209,7 +1229,7 @@ def realm_import_post_process(
 
     claimable_users = UserProfile.objects.filter(
         realm=realm, is_active=True, is_bot=False, is_mirror_dummy=False
-    )
+    ).order_by("full_name")
     context = {
         "users": claimable_users,
         "verified_email": preregistration_realm.email,
@@ -1302,17 +1322,16 @@ def create_realm(request: HttpRequest, creation_key: str | None = None) -> HttpR
 
             if key_record is not None:
                 key_record.delete()
-            new_realm_send_confirm_url = reverse("new_realm_send_confirm")
-            query = urlencode(
-                {
+            url = reverse(
+                "new_realm_send_confirm",
+                query={
                     "email": email,
                     "realm_name": realm_name,
                     "realm_type": realm_type,
                     "realm_default_language": realm_default_language,
                     "realm_subdomain": realm_subdomain,
-                }
+                },
             )
-            url = append_url_query_string(new_realm_send_confirm_url, query)
             return HttpResponseRedirect(url)
     else:
         default_language_code = get_browser_language_code(request)
@@ -1369,9 +1388,9 @@ def new_realm_send_confirm(
     request: HttpRequest,
     *,
     email: str,
+    realm_default_language: Annotated[str, StringConstraints(max_length=MAX_LANGUAGE_ID_LENGTH)],
     realm_name: Annotated[str, StringConstraints(max_length=Realm.MAX_REALM_NAME_LENGTH)],
     realm_type: Annotated[Json[int], check_int_in_validator(Realm.ORG_TYPE_IDS)],
-    realm_default_language: Annotated[str, StringConstraints(max_length=MAX_LANGUAGE_ID_LENGTH)],
     realm_subdomain: Annotated[str, StringConstraints(max_length=Realm.MAX_REALM_SUBDOMAIN_LENGTH)],
 ) -> HttpResponse:
     return TemplateResponse(
@@ -1465,10 +1484,7 @@ def accounts_home(
                 if settings.CORPORATE_ENABLED:
                     return render(request, "500.html", status=500)
                 return config_error(request, "smtp")
-            signup_send_confirm_url = reverse("signup_send_confirm")
-            query = urlencode({"email": email})
-            url = append_url_query_string(signup_send_confirm_url, query)
-            return HttpResponseRedirect(url)
+            return HttpResponseRedirect(reverse("signup_send_confirm", query={"email": email}))
 
     else:
         form = HomepageForm(realm=realm)

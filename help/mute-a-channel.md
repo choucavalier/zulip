@@ -14,11 +14,13 @@
 
 {tab|mobile}
 
-{!channel-long-press-menu.md!}
+Access this feature by following the web app instructions in your
+mobile device browser.
 
-1. Tap **Mute channel**.
-
-{!channel-long-press-menu-tip.md!}
+Implementation of this feature in the mobile app is tracked [on
+GitHub](https://github.com/zulip/zulip-flutter/issues/347). If
+you're interested in this feature, please react to the issue's
+description with 👍.
 
 {end_tabs}
 
@@ -34,11 +36,13 @@
 
 {tab|mobile}
 
-{!channel-long-press-menu.md!}
+Access this feature by following the web app instructions in your
+mobile device browser.
 
-1. Tap **Unmute channel**.
-
-{!channel-long-press-menu-tip.md!}
+Implementation of this feature in the mobile app is tracked [on
+GitHub](https://github.com/zulip/zulip-flutter/issues/347). If
+you're interested in this feature, please react to the issue's
+description with 👍.
 
 {end_tabs}
 
@@ -55,16 +59,6 @@
 {!select-channel-view-personal.md!}
 
 1. Under **Notification settings**, toggle **Mute channel**.
-
-{tab|mobile}
-
-{!channel-long-press-menu.md!}
-
-1. Tap **Channel settings**.
-
-1. Toggle **Muted**.
-
-{!mobile-channel-settings-menu-tip.md!}
 
 {end_tabs}
 

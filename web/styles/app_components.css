@@ -28,6 +28,7 @@ kbd {
     border: 1px solid var(--color-kbd-border);
     border-radius: 4px;
     font-weight: 600;
+    text-align: center;
     white-space: nowrap;
     background-color: var(--color-kbd-background);
     color: var(--color-kbd-text);
@@ -540,6 +541,10 @@ input.settings_text_input {
     .banner-action-buttons {
         padding: 0.085em 0;
     }
+}
+
+.desktop-setting-notifications {
+    margin-bottom: 10px;
 }
 
 .invite-stream-notice {
@@ -1058,6 +1063,8 @@ input.settings_text_input {
                 cursor: pointer;
                 color: hsl(357deg 52% 57%);
                 opacity: 0.7;
+                padding: 0;
+                font-size: 1.2em;
 
                 &:hover {
                     opacity: 1;
@@ -1072,6 +1079,10 @@ input.settings_text_input {
             background: transparent;
         }
     }
+}
+
+.delete-selected-drafts-button-container {
+    display: flex;
 }
 
 .dropdown-widget-button {
@@ -1120,7 +1131,7 @@ input.settings_text_input {
 
 .filter_text_input {
     padding: 4px 6px;
-    color: hsl(0deg 0% 33%);
+    color: var(--color-text-default);
     border: 1px solid hsl(0deg 0% 80%);
     transition:
         border-color linear 0.2s,
@@ -1324,7 +1335,8 @@ input.settings_text_input {
         background-color: var(--background-color-active-dropdown-item);
     }
 
-    &:focus {
+    &:focus,
+    &.current_selection {
         background-color: var(--background-color-active-dropdown-item);
         outline: none;
     }

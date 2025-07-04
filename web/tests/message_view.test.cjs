@@ -116,89 +116,85 @@ user_groups.initialize({realm_user_groups: [nobody, everyone]});
 run_test("empty_narrow_html", ({mock_template}) => {
     mock_template("empty_feed_notice.hbs", true, (_data, html) => html);
 
-    let actual_html = empty_narrow_html("This is a title", "<h1> This is the html </h1>");
+    // Title only
+    let actual_html = empty_narrow_html("This is a title", undefined, undefined);
     assert.equal(
         actual_html,
         `<div class="empty_feed_notice">
     <h4 class="empty-feed-notice-title"> This is a title </h4>
-    <div class="empty-feed-notice-description">
-            <h1> This is the html </h1>
-    </div>
 </div>
 `,
     );
 
-    const search_data_with_all_search_types = {
-        topic_query: "test",
-        stream_query: "new",
+    // Title and html
+    actual_html = empty_narrow_html("This is a title", "<h1> This is the html </h1>", undefined);
+    assert.equal(
+        actual_html,
+        `<div class="empty_feed_notice">
+    <h4 class="empty-feed-notice-title"> This is a title </h4>
+        <div class="empty-feed-notice-description">
+            <h1> This is the html </h1>
+        </div>
+    </div>
+`,
+    );
+
+    // Title and search data
+    const search_data_with_stop_word = {
         has_stop_word: true,
         query_words: [
-            {query_word: "search", is_stop_word: false},
             {query_word: "a", is_stop_word: true},
+            {query_word: "search", is_stop_word: false},
         ],
     };
-    actual_html = empty_narrow_html(
-        "This is a title",
-        undefined,
-        search_data_with_all_search_types,
-    );
+    actual_html = empty_narrow_html("This is a title", undefined, search_data_with_stop_word);
     assert.equal(
         actual_html,
         `<div class="empty_feed_notice">
     <h4 class="empty-feed-notice-title"> This is a title </h4>
-    <div class="empty-feed-notice-description">
-            Some common words were excluded from your search. <br/>You searched for:
-            <span>channel: new</span>
-            <span>topic: test</span>
-                <span class="search-query-word">search</span>
+        <div class="empty-feed-notice-description">
+            Common words were excluded from your search: <br/>
                 <del>a</del>
-    </div>
+                <span class="search-query-word">search</span>
+        </div>
 </div>
 `,
     );
 
-    const search_data_with_stream_without_stop_words = {
-        has_stop_word: false,
-        stream_query: "hello world",
-        query_words: [{query_word: "searchA", is_stop_word: false}],
+    const search_data_with_stop_words = {
+        has_stop_word: true,
+        query_words: [
+            {query_word: "a", is_stop_word: true},
+            {query_word: "search", is_stop_word: false},
+            {query_word: "and", is_stop_word: true},
+            {query_word: "return", is_stop_word: false},
+        ],
     };
-    actual_html = empty_narrow_html(
-        "This is a title",
-        undefined,
-        search_data_with_stream_without_stop_words,
-    );
+    actual_html = empty_narrow_html("This is a title", undefined, search_data_with_stop_words);
     assert.equal(
         actual_html,
         `<div class="empty_feed_notice">
     <h4 class="empty-feed-notice-title"> This is a title </h4>
-    <div class="empty-feed-notice-description">
-            You searched for:
-            <span>channel: hello world</span>
-                <span class="search-query-word">searchA</span>
-    </div>
+        <div class="empty-feed-notice-description">
+            Common words were excluded from your search: <br/>
+                <del>a</del>
+                <span class="search-query-word">search</span>
+                <del>and</del>
+                <span class="search-query-word">return</span>
+        </div>
 </div>
 `,
     );
 
-    const search_data_with_topic_without_stop_words = {
+    const search_data_without_stop_words = {
         has_stop_word: false,
-        topic_query: "hello",
-        query_words: [{query_word: "searchB", is_stop_word: false}],
+        query_words: [{query_word: "search", is_stop_word: false}],
     };
-    actual_html = empty_narrow_html(
-        "This is a title",
-        undefined,
-        search_data_with_topic_without_stop_words,
-    );
+    actual_html = empty_narrow_html("This is a title", undefined, search_data_without_stop_words);
     assert.equal(
         actual_html,
         `<div class="empty_feed_notice">
     <h4 class="empty-feed-notice-title"> This is a title </h4>
-    <div class="empty-feed-notice-description">
-            You searched for:
-            <span>topic: hello</span>
-                <span class="search-query-word">searchB</span>
-    </div>
 </div>
 `,
     );
@@ -648,9 +644,9 @@ run_test("show_empty_narrow_message_with_search", ({mock_template, override}) =>
 
     const current_filter = set_filter([["search", "grail"]]);
     narrow_banner.show_empty_narrow_message(current_filter);
-    assert.match(
+    assert.equal(
         $(".empty_feed_notice_main").html(),
-        /<span class="search-query-word">grail<\/span>/,
+        empty_narrow_html("translated: No search results."),
     );
 });
 
@@ -681,15 +677,6 @@ run_test("show_search_stopwords", ({mock_template, override}) => {
 
     const streamA_id = 88;
     stream_data.add_sub({name: "streamA", stream_id: streamA_id});
-    const expected_stream_search_data = {
-        has_stop_word: true,
-        stream_query: "streamA",
-        query_words: [
-            {query_word: "what", is_stop_word: true},
-            {query_word: "about", is_stop_word: true},
-            {query_word: "grail", is_stop_word: false},
-        ],
-    };
     current_filter = set_filter([
         ["stream", streamA_id.toString()],
         ["search", "what about grail"],
@@ -697,19 +684,9 @@ run_test("show_search_stopwords", ({mock_template, override}) => {
     narrow_banner.show_empty_narrow_message(current_filter);
     assert.equal(
         $(".empty_feed_notice_main").html(),
-        empty_narrow_html("translated: No search results.", undefined, expected_stream_search_data),
+        empty_narrow_html("translated: No search results.", undefined, expected_search_data),
     );
 
-    const expected_stream_topic_search_data = {
-        has_stop_word: true,
-        stream_query: "streamA",
-        topic_query: "topicA",
-        query_words: [
-            {query_word: "what", is_stop_word: true},
-            {query_word: "about", is_stop_word: true},
-            {query_word: "grail", is_stop_word: false},
-        ],
-    };
     current_filter = set_filter([
         ["stream", streamA_id.toString()],
         ["topic", "topicA"],
@@ -718,11 +695,7 @@ run_test("show_search_stopwords", ({mock_template, override}) => {
     narrow_banner.show_empty_narrow_message(current_filter);
     assert.equal(
         $(".empty_feed_notice_main").html(),
-        empty_narrow_html(
-            "translated: No search results.",
-            undefined,
-            expected_stream_topic_search_data,
-        ),
+        empty_narrow_html("translated: No search results.", undefined, expected_search_data),
     );
 });
 
@@ -800,7 +773,7 @@ run_test("narrow_to_compose_target streams", ({override, override_rewire}) => {
 
     compose_state.set_message_type("stream");
     const rome_id = 99;
-    stream_data.add_sub({name: "ROME", stream_id: rome_id});
+    stream_data.add_sub({name: "ROME", stream_id: rome_id, topics_policy: "inherit"});
     compose_state.set_stream_id(99);
 
     // Test with existing topic
@@ -824,16 +797,16 @@ run_test("narrow_to_compose_target streams", ({override, override_rewire}) => {
         {operator: "topic", operand: "four"},
     ]);
 
-    // Test with blank topic, with realm_mandatory_topics
-    override(realm, "realm_mandatory_topics", true);
+    // Test with blank topic, with realm_topics_policy
+    override(realm, "realm_topics_policy", "disable_empty_topic");
     compose_state.topic("");
     args.called = false;
     message_view.to_compose_target();
     assert.equal(args.called, true);
     assert.deepEqual(args.terms, [{operator: "channel", operand: rome_id.toString()}]);
 
-    // Test with blank topic, without realm_mandatory_topics
-    override(realm, "realm_mandatory_topics", false);
+    // Test with blank topic, without realm_topics_policy
+    override(realm, "realm_topics_policy", "allow_empty_topic");
     compose_state.topic("");
     args.called = false;
     message_view.to_compose_target();
@@ -844,7 +817,7 @@ run_test("narrow_to_compose_target streams", ({override, override_rewire}) => {
     ]);
 
     // Test with no topic, with realm mandatory topics
-    override(realm, "realm_mandatory_topics", true);
+    override(realm, "realm_topics_policy", "disable_empty_topic");
     compose_state.topic(undefined);
     args.called = false;
     message_view.to_compose_target();
@@ -852,7 +825,7 @@ run_test("narrow_to_compose_target streams", ({override, override_rewire}) => {
     assert.deepEqual(args.terms, [{operator: "channel", operand: rome_id.toString()}]);
 
     // Test with no topic, without realm mandatory topics
-    override(realm, "realm_mandatory_topics", false);
+    override(realm, "realm_topics_policy", "allow_empty_topic");
     compose_state.topic(undefined);
     args.called = false;
     message_view.to_compose_target();

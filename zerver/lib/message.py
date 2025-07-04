@@ -9,7 +9,7 @@ from django.db import connection
 from django.db.models import Exists, F, Max, OuterRef, QuerySet, Sum
 from django.utils.timezone import now as timezone_now
 from django.utils.translation import gettext as _
-from django_cte import With
+from django_cte import CTE, with_cte
 from psycopg2.sql import SQL
 
 from analytics.lib.counts import COUNT_STATS
@@ -58,6 +58,7 @@ from zerver.models import (
 from zerver.models.constants import MAX_TOPIC_NAME_LENGTH
 from zerver.models.messages import get_usermessage_by_message_id
 from zerver.models.realms import MessageEditHistoryVisibilityPolicyEnum
+from zerver.models.recipients import DirectMessageGroup
 
 
 class MessageDetailsDict(TypedDict, total=False):
@@ -882,11 +883,10 @@ def get_raw_unread_data(
             # inside a CTE, such that the join to Recipients, below, can't be
             # implied to remove rows, and thus allows a Nested Loop join,
             # potentially memoized to reduce the number of Recipient lookups.
-            cte = With(user_msgs[:MAX_UNREAD_MESSAGES])
+            cte = CTE(user_msgs[:MAX_UNREAD_MESSAGES])
 
             user_msgs = (
-                cte.join(Recipient, id=cte.col.recipient_id)
-                .with_cte(cte)
+                with_cte(cte, select=cte.join(Recipient, id=cte.col.recipient_id))
                 .annotate(
                     message_id=cte.col.message_id,
                     sender_id=cte.col.sender_id,
@@ -1007,9 +1007,26 @@ def extract_unread_data_from_um_rows(
 
         elif msg_type == Recipient.DIRECT_MESSAGE_GROUP:
             user_ids_string = get_direct_message_group_users(recipient_id)
-            direct_message_group_dict[message_id] = dict(
-                user_ids_string=user_ids_string,
-            )
+            user_ids = [int(uid) for uid in user_ids_string.split(",")]
+
+            # For API compatibility, we populate pm_dict for 1:1 and self DMs
+            # so clients relying on pm_dict continue to work during the migration.
+            # We populate direct_message_group_dict for group size > 2.
+            if len(user_ids) <= 2:
+                if len(user_ids) == 1:
+                    # For self-DM, other_user_id is the user's own id
+                    other_user_id = user_ids[0]
+                else:
+                    # For 1:1 DM, other_user_id is the other participant
+                    other_user_id = user_ids[1] if user_ids[0] == user_profile.id else user_ids[0]
+
+                pm_dict[message_id] = dict(
+                    other_user_id=other_user_id,
+                )
+            else:
+                direct_message_group_dict[message_id] = dict(
+                    user_ids_string=user_ids_string,
+                )
 
         # TODO: Add support for alert words here as well.
         is_mentioned = (row["flags"] & UserMessage.flags.mentioned) != 0
@@ -1717,3 +1734,14 @@ def set_visibility_policy_possible(user_profile: UserProfile, message: Message) 
 def remove_single_newlines(content: str) -> str:
     content = content.strip("\n")
     return re.sub(r"(?<!\n)\n(?!\n|[-*] |[0-9]+\. )", " ", content)
+
+
+def is_1_to_1_message(message: Message) -> bool:
+    if message.recipient.type == Recipient.DIRECT_MESSAGE_GROUP:
+        direct_message_group = DirectMessageGroup.objects.get(id=message.recipient.type_id)
+        return direct_message_group.group_size <= 2
+
+    if message.recipient.type == Recipient.PERSONAL:
+        return True
+
+    return False

@@ -9,6 +9,7 @@ import * as blueslip from "./blueslip.ts";
 import * as bot_data from "./bot_data.ts";
 import * as browser_history from "./browser_history.ts";
 import {buddy_list} from "./buddy_list.ts";
+import * as channel_folders from "./channel_folders.ts";
 import * as compose_call from "./compose_call.ts";
 import * as compose_call_ui from "./compose_call_ui.ts";
 import * as compose_closed_ui from "./compose_closed_ui.ts";
@@ -29,6 +30,7 @@ import * as message_edit from "./message_edit.ts";
 import * as message_events from "./message_events.ts";
 import * as message_lists from "./message_lists.ts";
 import * as message_live_update from "./message_live_update.ts";
+import * as message_reminder from "./message_reminder.ts";
 import * as message_store from "./message_store.ts";
 import * as message_view from "./message_view.ts";
 import * as muted_users_ui from "./muted_users_ui.ts";
@@ -46,6 +48,7 @@ import * as realm_playground from "./realm_playground.ts";
 import {realm_user_settings_defaults} from "./realm_user_settings_defaults.ts";
 import * as recent_view_ui from "./recent_view_ui.ts";
 import * as reload from "./reload.ts";
+import * as reminders_overlay_ui from "./reminders_overlay_ui.ts";
 import * as saved_snippets from "./saved_snippets.ts";
 import * as saved_snippets_ui from "./saved_snippets_ui.ts";
 import * as scheduled_messages from "./scheduled_messages.ts";
@@ -111,6 +114,18 @@ export function dispatch_normal_event(event) {
 
         case "attachment":
             attachments_ui.update_attachments(event);
+            break;
+
+        case "channel_folder":
+            switch (event.op) {
+                case "add": {
+                    channel_folders.add(event.channel_folder);
+                    break;
+                }
+                default:
+                    blueslip.error("Unexpected event type channel_folder/" + event.op);
+                    break;
+            }
             break;
 
         case "custom_profile_fields":
@@ -235,6 +250,7 @@ export function dispatch_normal_event(event) {
                 can_move_messages_between_channels_group: noop,
                 can_move_messages_between_topics_group: noop,
                 can_resolve_topics_group: noop,
+                can_set_topics_policy_group: noop,
                 can_summarize_topics_group: noop,
                 create_multiuse_invite_group: noop,
                 default_code_block_language: noop,
@@ -249,7 +265,6 @@ export function dispatch_normal_event(event) {
                 inline_image_preview: noop,
                 inline_url_embed_preview: noop,
                 invite_required: noop,
-                mandatory_topics: noop,
                 message_content_edit_limit_seconds: noop,
                 message_content_delete_limit_seconds: noop,
                 message_edit_history_visibility_policy: noop,
@@ -263,6 +278,7 @@ export function dispatch_normal_event(event) {
                 push_notifications_enabled: noop,
                 require_unique_names: noop,
                 send_welcome_emails: noop,
+                topics_policy: noop,
                 message_content_allowed_in_email_notifications: noop,
                 enable_spectator_access: noop,
                 signup_announcements_stream_id: noop,
@@ -293,11 +309,6 @@ export function dispatch_normal_event(event) {
                                 "can_create_web_public_channel_group",
                             );
                         }
-
-                        if (event.property === "mandatory_topics") {
-                            compose_recipient.update_topic_inputbox_on_mandatory_topics_change();
-                            compose_recipient.update_compose_area_placeholder_text();
-                        }
                     }
                     break;
                 case "update_dict":
@@ -308,6 +319,11 @@ export function dispatch_normal_event(event) {
                                     realm[key] = value;
                                 } else {
                                     realm["realm_" + key] = value;
+                                }
+
+                                if (key === "topics_policy") {
+                                    compose_recipient.update_topic_inputbox_on_topics_policy_change();
+                                    compose_recipient.update_compose_area_placeholder_text();
                                 }
 
                                 if (Object.hasOwn(realm_settings, key)) {
@@ -628,6 +644,24 @@ export function dispatch_normal_event(event) {
             }
             break;
 
+        case "reminders":
+            switch (event.op) {
+                case "add": {
+                    message_reminder.add_reminders(event.reminders);
+                    reminders_overlay_ui.rerender();
+                    left_sidebar_navigation_area.update_reminders_row();
+                    break;
+                }
+                case "remove": {
+                    message_reminder.remove_reminder(event.reminder_id);
+                    reminders_overlay_ui.remove_reminder_id(event.reminder_id);
+                    left_sidebar_navigation_area.update_reminders_row();
+                    break;
+                }
+                // No default
+            }
+            break;
+
         case "stream":
             switch (event.op) {
                 case "update":
@@ -859,6 +893,7 @@ export function dispatch_normal_event(event) {
                 "web_navigate_to_sent_message",
                 "web_stream_unreads_count_display_policy",
                 "web_suggest_update_timezone",
+                "web_left_sidebar_unreads_count_summary",
             ];
 
             const original_home_view = user_settings.web_home_view;
@@ -942,6 +977,9 @@ export function dispatch_normal_event(event) {
             }
             if (event.property === "starred_message_counts") {
                 starred_messages_ui.rerender_ui();
+            }
+            if (event.property === "web_left_sidebar_unreads_count_summary") {
+                sidebar_ui.update_unread_counts_visibility();
             }
             if (
                 event.property === "receives_typing_notifications" &&

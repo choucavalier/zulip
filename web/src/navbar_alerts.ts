@@ -230,10 +230,10 @@ const CONFIGURE_OUTGOING_MAIL_BANNER: AlertBanner = {
 
 const INSECURE_DESKTOP_APP_BANNER: AlertBanner = {
     process: "insecure-desktop-app",
-    intent: "danger",
+    intent: "warning",
     label: $t({
         defaultMessage:
-            "You are using an old version of the Zulip desktop app with known security bugs.",
+            "Zulip desktop is not updating automatically. Please upgrade for security updates and other improvements.",
     }),
     buttons: [
         {
@@ -506,7 +506,7 @@ export function initialize(): void {
     $("#navbar_alerts_wrapper").on("click", ".convert-demo-organization", (e) => {
         e.stopPropagation();
         e.preventDefault();
-        demo_organizations_ui.do_convert_demo_organization();
+        demo_organizations_ui.show_convert_demo_organization_modal();
     });
 
     $("#navbar_alerts_wrapper").on("click", ".demo-organizations-help", () => {

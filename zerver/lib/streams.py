@@ -51,6 +51,7 @@ from zerver.models import (
 from zerver.models.groups import SystemGroups
 from zerver.models.realm_audit_logs import AuditLogEventType
 from zerver.models.streams import (
+    StreamTopicsPolicyEnum,
     bulk_get_streams,
     get_realm_stream,
     get_stream,
@@ -84,8 +85,11 @@ class StreamDict(TypedDict, total=False):
     stream_post_policy: int
     history_public_to_subscribers: bool | None
     message_retention_days: int | None
+    topics_policy: int | None
     can_add_subscribers_group: UserGroup | None
     can_administer_channel_group: UserGroup | None
+    can_move_messages_out_of_channel_group: UserGroup | None
+    can_move_messages_within_channel_group: UserGroup | None
     can_send_message_group: UserGroup | None
     can_remove_subscribers_group: UserGroup | None
     can_subscribe_group: UserGroup | None
@@ -110,6 +114,12 @@ def get_stream_permission_policy_key(
 
     assert policy_key is not None
     return policy_key
+
+
+def get_stream_topics_policy(realm: Realm, stream: Stream) -> int:
+    if stream.topics_policy == StreamTopicsPolicyEnum.inherit.value:
+        return realm.topics_policy
+    return stream.topics_policy
 
 
 def get_default_value_for_history_public_to_subscribers(
@@ -262,8 +272,11 @@ def create_stream_if_needed(
     history_public_to_subscribers: bool | None = None,
     stream_description: str = "",
     message_retention_days: int | None = None,
+    topics_policy: int | None = None,
     can_add_subscribers_group: UserGroup | None = None,
     can_administer_channel_group: UserGroup | None = None,
+    can_move_messages_out_of_channel_group: UserGroup | None = None,
+    can_move_messages_within_channel_group: UserGroup | None = None,
     can_send_message_group: UserGroup | None = None,
     can_remove_subscribers_group: UserGroup | None = None,
     can_subscribe_group: UserGroup | None = None,
@@ -295,6 +308,9 @@ def create_stream_if_needed(
 
     stream_name = stream_name.strip()
 
+    if topics_policy is None:
+        topics_policy = StreamTopicsPolicyEnum.inherit.value
+
     (stream, created) = Stream.objects.get_or_create(
         realm=realm,
         name__iexact=stream_name,
@@ -308,6 +324,7 @@ def create_stream_if_needed(
             is_in_zephyr_realm=realm.is_zephyr_mirror_realm,
             message_retention_days=message_retention_days,
             folder=folder,
+            topics_policy=topics_policy,
             **group_setting_values,
         ),
     )
@@ -382,8 +399,15 @@ def create_streams_if_needed(
             history_public_to_subscribers=stream_dict.get("history_public_to_subscribers"),
             stream_description=stream_dict.get("description", ""),
             message_retention_days=stream_dict.get("message_retention_days", None),
+            topics_policy=stream_dict.get("topics_policy", None),
             can_add_subscribers_group=stream_dict.get("can_add_subscribers_group", None),
             can_administer_channel_group=stream_dict.get("can_administer_channel_group", None),
+            can_move_messages_out_of_channel_group=stream_dict.get(
+                "can_move_messages_out_of_channel_group", None
+            ),
+            can_move_messages_within_channel_group=stream_dict.get(
+                "can_move_messages_within_channel_group", None
+            ),
             can_send_message_group=stream_dict.get("can_send_message_group", None),
             can_remove_subscribers_group=stream_dict.get("can_remove_subscribers_group", None),
             can_subscribe_group=stream_dict.get("can_subscribe_group", None),
@@ -1061,6 +1085,56 @@ def can_access_stream_history_by_id(user_profile: UserProfile, stream_id: int) -
     return can_access_stream_history(user_profile, stream)
 
 
+def can_move_messages_out_of_channel(user_profile: UserProfile, stream: Stream) -> bool:
+    if user_profile.is_realm_admin:
+        return True
+
+    if user_profile.can_move_messages_between_streams():
+        return True
+
+    if can_administer_accessible_channel(stream, user_profile):
+        return True
+
+    return user_has_permission_for_group_setting(
+        stream.can_move_messages_out_of_channel_group_id,
+        user_profile,
+        Stream.stream_permission_group_settings["can_move_messages_out_of_channel_group"],
+        direct_member_only=False,
+    )
+
+
+def can_move_messages_within_channel(user_profile: UserProfile, stream: Stream) -> bool:
+    if user_profile.is_realm_admin or can_administer_accessible_channel(stream, user_profile):
+        return True
+
+    return user_has_permission_for_group_setting(
+        stream.can_move_messages_within_channel_group_id,
+        user_profile,
+        Stream.stream_permission_group_settings["can_move_messages_within_channel_group"],
+        direct_member_only=False,
+    )
+
+
+def can_edit_topic(user_profile: UserProfile, orig_stream: Stream, target_stream: Stream) -> bool:
+    # Users can only edit topics if they have either of these permissions:
+    #   1) organization-level permission to edit topics
+    #   2) channel-level permission to edit topics in the original channel
+    #   3) channel-level permission to edit topics in the target channel
+    # If none apply, throw error.
+    if user_profile.can_move_messages_to_another_topic():
+        return True
+
+    if can_move_messages_within_channel(user_profile, orig_stream):
+        return True
+
+    if orig_stream.id != target_stream.id and can_move_messages_within_channel(
+        user_profile, target_stream
+    ):
+        return True
+
+    return False
+
+
 def bulk_can_remove_subscribers_from_streams(
     streams: list[Stream], user_profile: UserProfile
 ) -> bool:
@@ -1487,6 +1561,12 @@ def stream_to_dict(
     can_administer_channel_group = get_group_setting_value_for_register_api(
         stream.can_administer_channel_group_id, anonymous_group_membership
     )
+    can_move_messages_out_of_channel_group = get_group_setting_value_for_register_api(
+        stream.can_move_messages_out_of_channel_group_id, anonymous_group_membership
+    )
+    can_move_messages_within_channel_group = get_group_setting_value_for_register_api(
+        stream.can_move_messages_within_channel_group_id, anonymous_group_membership
+    )
     can_send_message_group = get_group_setting_value_for_register_api(
         stream.can_send_message_group_id, anonymous_group_membership
     )
@@ -1505,6 +1585,8 @@ def stream_to_dict(
         is_archived=stream.deactivated,
         can_add_subscribers_group=can_add_subscribers_group,
         can_administer_channel_group=can_administer_channel_group,
+        can_move_messages_out_of_channel_group=can_move_messages_out_of_channel_group,
+        can_move_messages_within_channel_group=can_move_messages_within_channel_group,
         can_send_message_group=can_send_message_group,
         can_remove_subscribers_group=can_remove_subscribers_group,
         can_subscribe_group=can_subscribe_group,
@@ -1524,6 +1606,8 @@ def stream_to_dict(
         stream_post_policy=stream_post_policy,
         is_announcement_only=stream_post_policy == Stream.STREAM_POST_POLICY_ADMINS,
         stream_weekly_traffic=stream_weekly_traffic,
+        subscriber_count=stream.subscriber_count,
+        topics_policy=StreamTopicsPolicyEnum(stream.topics_policy).name,
     )
 
 

@@ -43,6 +43,41 @@
     </div>
 </div>
 
+{{#if is_development_environment}}
+<div class="channel-folder-subsection {{#if is_stream_edit}}settings-subsection-parent{{/if}}">
+    <div class="channel-folder-title-container {{#if is_stream_edit}}subsection-header{{/if}}">
+        <h3 class="stream_setting_subsection_title">{{t "Folders"}}</h3>
+        {{#if is_stream_edit}}
+            {{> ../settings/settings_save_discard_widget section_name="stream-permissions" }}
+        {{/if}}
+    </div>
+
+    <div class="input-group channel-folder-container">
+        {{!-- This is a modified version of dropdown_widget_with_label.hbs
+        component so that we can show dropdown button and button to create
+        a new folder on same line without having to add much CSS with
+        hardcoded margin and padding values. --}}
+        <label class="settings-field-label" for="{{channel_folder_widget_name}}_widget">
+            {{t "Channel folder"}}
+        </label>
+        <span class="prop-element hide" id="id_{{channel_folder_widget_name}}" data-setting-widget-type="dropdown-list-widget" data-setting-value-type="number"></span>
+        <div class="dropdown_widget_with_label_wrapper channel-folder-widget-container">
+            {{> ../dropdown_widget widget_name=channel_folder_widget_name}}
+
+            {{#if is_admin}}
+                {{> ../components/action_button
+                  label=(t "Create new folder")
+                  attention="quiet"
+                  intent="neutral"
+                  type="button"
+                  custom_classes="create-channel-folder-button"
+                  }}
+            {{/if}}
+        </div>
+    </div>
+</div>
+{{/if}}
+
 <div class="advanced-configurations-container {{#if is_stream_edit}}settings-subsection-parent{{/if}}">
     <div class="advance-config-title-container {{#if is_stream_edit}}subsection-header{{/if}}">
         <div class="advance-config-toggle-area">
@@ -64,6 +99,13 @@
           prefix=prefix
           help_link="/help/stream-sending-policy" }}
 
+        <div class="input-group">
+            <label for="{{prefix}}topics_policy" class="settings-field-label">{{> stream_topics_policy_label .}}</label>
+            <select name="stream-topics-policy-setting" id="{{prefix}}topics_policy" class="prop-element settings_select bootstrap-focus-style" data-setting-widget-type="string">
+                {{> ../settings/dropdown_options_widget option_values=stream_topics_policy_values}}
+            </select>
+        </div>
+
         {{> ../settings/group_setting_value_pill_input
           setting_name="can_administer_channel_group"
           label=group_setting_labels.can_administer_channel_group
@@ -82,6 +124,16 @@
         {{> ../settings/group_setting_value_pill_input
           setting_name="can_remove_subscribers_group"
           label=group_setting_labels.can_remove_subscribers_group
+          prefix=prefix }}
+
+        {{> ../settings/group_setting_value_pill_input
+          setting_name="can_move_messages_within_channel_group"
+          label=group_setting_labels.can_move_messages_within_channel_group
+          prefix=prefix }}
+
+        {{> ../settings/group_setting_value_pill_input
+          setting_name="can_move_messages_out_of_channel_group"
+          label=group_setting_labels.can_move_messages_out_of_channel_group
           prefix=prefix }}
 
 

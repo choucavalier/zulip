@@ -1,4 +1,3 @@
-import Handlebars from "handlebars/runtime.js";
 import _ from "lodash";
 import assert from "minimalistic-assert";
 
@@ -261,7 +260,7 @@ export function create_user_pill_context(user: User): UserPillItem {
 
     return {
         id: user.user_id,
-        display_value: new Handlebars.SafeString(user.full_name),
+        display_value: user.full_name,
         has_image: true,
         img_src: avatar_url,
         should_add_guest_user_indicator: people.should_add_guest_user_indicator(user.user_id),
@@ -361,10 +360,7 @@ export class Filter {
                 // phrase search behavior, however.  So, we replace all instances of
                 // curly quotes with regular quotes when doing a search.  This is
                 // unlikely to cause any problems and is probably what the user wants.
-                operand = operand
-                    .toString()
-                    .toLowerCase()
-                    .replaceAll(/[\u201C\u201D]/g, '"');
+                operand = operand.toString().replaceAll(/[\u201C\u201D]/g, '"');
                 break;
             default:
                 operand = operand.toString().toLowerCase();
@@ -807,6 +803,12 @@ export class Filter {
                     };
                 }
             }
+            if (canonicalized_operator === "channels" && operand === "public") {
+                return {
+                    type: "plain_text",
+                    content: this.describe_public_channels(term.negated ?? false),
+                };
+            }
             const prefix_for_operator = Filter.operator_to_prefix(
                 canonicalized_operator,
                 term.negated,
@@ -865,6 +867,14 @@ export class Filter {
             };
         });
         return [...parts, ...more_parts];
+    }
+
+    static describe_public_channels(negated: boolean): string {
+        const possible_prefix = negated ? "exclude " : "";
+        if (page_params.is_spectator || current_user.is_guest) {
+            return possible_prefix + "all public channels that you can view";
+        }
+        return possible_prefix + "all public channels";
     }
 
     static search_description_as_html(
@@ -1098,7 +1108,7 @@ export class Filter {
         return this.has_operator("dm") && this.operands("dm")[0]!.split(",").length === 1;
     }
 
-    supports_collapsing_recipients(): boolean {
+    contains_no_partial_conversations(): boolean {
         // Determines whether a view is guaranteed, by construction,
         // to contain consecutive messages in a given topic, and thus
         // it is appropriate to collapse recipient/sender headings.
@@ -1143,7 +1153,7 @@ export class Filter {
     }
 
     calc_can_mark_messages_read(): boolean {
-        // Arguably this should match supports_collapsing_recipients.
+        // Arguably this should match contains_no_partial_conversations.
         // We may want to standardize on that in the future.  (At
         // present, this function does not allow combining valid filters).
         if (this.single_term_type_returns_all_messages_of_conversation()) {
@@ -1536,7 +1546,10 @@ export class Filter {
     }
 
     allow_use_first_unread_when_narrowing(): boolean {
-        return this.can_mark_messages_read() || this.has_operator("is");
+        return (
+            this.can_mark_messages_read() ||
+            (this.has_operator("is") && !this.has_operand("is", "starred"))
+        );
     }
 
     contains_only_private_messages(): boolean {

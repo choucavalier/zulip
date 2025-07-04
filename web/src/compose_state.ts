@@ -2,7 +2,7 @@ import $ from "jquery";
 
 import * as compose_pm_pill from "./compose_pm_pill.ts";
 import * as people from "./people.ts";
-import {realm} from "./state_data.ts";
+import * as stream_data from "./stream_data.ts";
 import * as sub_store from "./sub_store.ts";
 
 let message_type: "stream" | "private" | undefined;
@@ -10,6 +10,7 @@ let recipient_edited_manually = false;
 let is_content_unedited_restored_draft = false;
 let last_focused_compose_type_input: HTMLTextAreaElement | undefined;
 let preview_render_count = 0;
+let is_processing_forward_message = false;
 
 // We use this variable to keep track of whether user has viewed the topic resolved
 // banner for the current compose session, for a narrow. This prevents the banner
@@ -83,6 +84,14 @@ export function get_preview_render_count(): number {
 
 export function set_preview_render_count(count: number): void {
     preview_render_count = count;
+}
+
+export function set_is_processing_forward_message(val: boolean): void {
+    is_processing_forward_message = val;
+}
+
+export function get_is_processing_forward_message(): boolean {
+    return is_processing_forward_message;
 }
 
 export function composing(): boolean {
@@ -260,7 +269,7 @@ export function has_savable_message_content(): boolean {
 
 export function has_full_recipient(): boolean {
     if (message_type === "stream") {
-        const has_topic = topic() !== "" || !realm.realm_mandatory_topics;
+        const has_topic = topic() !== "" || stream_data.can_use_empty_topic(stream_id());
         return stream_id() !== undefined && has_topic;
     }
     return private_message_recipient_ids().length > 0;

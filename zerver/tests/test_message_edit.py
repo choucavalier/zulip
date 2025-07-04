@@ -189,6 +189,7 @@ class EditMessageTest(ZulipTestCase):
         self.assertEqual(response_dict["message"]["id"], msg_id)
         self.assertEqual(response_dict["message"]["recipient_id"], cordelia.recipient_id)
         self.assertEqual(response_dict["message"]["flags"], ["read"])
+        self.assertEqual(response_dict["message"][TOPIC_NAME], "")
 
         msg_id = self.send_personal_message(
             from_user=cordelia, to_user=hamlet, content="Incoming direct message"
@@ -200,6 +201,7 @@ class EditMessageTest(ZulipTestCase):
         # Incoming DMs show the recipient_id that outgoing DMs would.
         self.assertEqual(response_dict["message"]["recipient_id"], cordelia.recipient_id)
         self.assertEqual(response_dict["message"]["flags"], [])
+        self.assertEqual(response_dict["message"][TOPIC_NAME], "")
 
         # Send message to web-public stream where hamlet is not subscribed.
         # This will test case of user having no `UserMessage` but having access
@@ -640,6 +642,41 @@ class EditMessageTest(ZulipTestCase):
         self.assertEqual(
             message_history_2[1]["prev_rendered_content"],
             "<p>content before edit, line 1</p>\n<p>content before edit, line 3</p>",
+        )
+
+    def test_edit_direct_message_history(self) -> None:
+        msg_id = self.send_personal_message(
+            self.example_user("hamlet"),
+            self.example_user("othello"),
+            content="content before edit",
+        )
+
+        self.login("hamlet")
+        new_content = "content after edit"
+        result = self.client_patch(
+            f"/json/messages/{msg_id}",
+            {
+                "content": new_content,
+            },
+        )
+        self.assert_json_success(result)
+
+        message_edit_history = self.client_get(f"/json/messages/{msg_id}/history")
+        json_response = orjson.loads(message_edit_history.content)
+        message_history = json_response["message_history"]
+        self.assertEqual(message_history[0]["content"], "content before edit")
+        self.assertEqual(message_history[0]["rendered_content"], "<p>content before edit</p>")
+        self.assertEqual(message_history[0]["topic"], "")
+
+        self.assertEqual(message_history[1]["prev_content"], "content before edit")
+        self.assertEqual(message_history[1]["prev_rendered_content"], "<p>content before edit</p>")
+        self.assertEqual(message_history[1]["content"], "content after edit")
+        self.assertEqual(message_history[1]["rendered_content"], "<p>content after edit</p>")
+        self.assertEqual(message_history[1]["topic"], "")
+
+        self.assertEqual(
+            message_history[1]["content_html_diff"],
+            '<div><p>content <span class="highlight_text_inserted">after</span> <span class="highlight_text_deleted">before</span> edit</p></div>',
         )
 
     def test_empty_message_edit(self) -> None:
@@ -1440,13 +1477,13 @@ class EditMessageTest(ZulipTestCase):
         )
         do_edit_message_assert_success(id_, "E", "iago")
 
-        # even owners and admins cannot edit the topics of messages
         set_message_editing_params(True, "unlimited", nobody_system_group)
+        # owners and admins are allowed to edit the topics via channel-level
+        # `can_move_messages_within_channel_group` permission
+        do_edit_message_assert_success(id_, "H", "desdemona")
+        do_edit_message_assert_success(id_, "I", "iago")
         do_edit_message_assert_error(
-            id_, "H", "You don't have permission to edit this message", "desdemona"
-        )
-        do_edit_message_assert_error(
-            id_, "H", "You don't have permission to edit this message", "iago"
+            id_, "E", "You don't have permission to edit this message", "shiva"
         )
 
         # users can edit topics even if allow_message_editing is False
@@ -1492,9 +1529,9 @@ class EditMessageTest(ZulipTestCase):
         # Polonius and Cordelia are in the allowed user group, so can move messages.
         do_edit_message_assert_success(id_, "I", "polonius")
         do_edit_message_assert_success(id_, "J", "cordelia")
-        # Iago is not in the allowed user group, so cannot move messages.
+        # Hamlet is not in the allowed user group, so cannot move messages.
         do_edit_message_assert_error(
-            id_, "K", "You don't have permission to edit this message", "iago"
+            id_, "K", "You don't have permission to edit this message", "hamlet"
         )
 
         # Test for checking the setting for anonymous user group.

@@ -3,6 +3,8 @@
 const assert = require("node:assert/strict");
 
 const {mock_banners} = require("./lib/compose_banner.cjs");
+const {make_stream} = require("./lib/example_stream.cjs");
+const {make_user} = require("./lib/example_user.cjs");
 const {mock_esm, mock_cjs, set_global, zrequire} = require("./lib/namespace.cjs");
 const {run_test, noop} = require("./lib/test.cjs");
 const $ = require("./lib/zjquery.cjs");
@@ -10,7 +12,6 @@ const $ = require("./lib/zjquery.cjs");
 const user_pill = mock_esm("../src/user_pill");
 const settings_data = mock_esm("../src/settings_data");
 const messages_overlay_ui = mock_esm("../src/messages_overlay_ui");
-messages_overlay_ui.initialize_restore_overlay_message_tooltip = noop;
 
 const people = zrequire("people");
 const compose_state = zrequire("compose_state");
@@ -31,55 +32,54 @@ const REALM_EMPTY_TOPIC_DISPLAY_NAME = "test general chat";
 const realm = {realm_empty_topic_display_name: REALM_EMPTY_TOPIC_DISPLAY_NAME};
 set_realm(realm);
 
-const aaron = {
+const aaron = make_user({
     email: "aaron@zulip.com",
     user_id: 6,
     full_name: "Aaron",
-};
-const iago = {
+});
+const iago = make_user({
     email: "iago@zulip.com",
     user_id: 2,
     full_name: "Iago",
-};
-const zoe = {
+});
+const zoe = make_user({
     email: "zoe@zulip.com",
     user_id: 3,
     full_name: "Zoe",
-};
+});
 set_current_user(aaron);
 people.add_active_user(aaron);
 people.initialize_current_user(aaron.user_id);
 people.add_active_user(iago);
 people.add_active_user(zoe);
 
-const stream_A = {
+const stream_A = make_stream({
     subscribed: false,
     name: "A",
     stream_id: 1,
-};
-stream_data.add_sub(stream_A);
-const stream_B = {
+});
+const stream_B = make_stream({
     subscribed: false,
     name: "B",
     stream_id: 2,
-};
-stream_data.add_sub(stream_B);
-
-const stream_1 = {
+});
+const stream_1 = make_stream({
     subscribed: false,
     name: "stream 1",
     stream_id: 30,
     color: "c2726a",
-};
-stream_data.add_sub(stream_1);
-const stream_2 = {
+});
+const stream_2 = make_stream({
     subscribed: false,
     name: "stream 2",
     stream_id: 40,
     color: "e2226a",
     invite_only: false,
     is_web_public: false,
-};
+});
+stream_data.add_sub(stream_A);
+stream_data.add_sub(stream_B);
+stream_data.add_sub(stream_1);
 stream_data.add_sub(stream_2);
 
 const setTimeout_delay = 3000;
@@ -249,7 +249,7 @@ test("draft_model delete", ({override_rewire}) => {
     const id = draft_model.addDraft(draft_1);
     assert.deepEqual(draft_model.getDraft(id), draft_1);
 
-    draft_model.deleteDraft(id);
+    draft_model.deleteDrafts([id]);
     assert.deepEqual(draft_model.getDraft(id), false);
 });
 
@@ -631,7 +631,7 @@ test("format_drafts", ({override, override_rewire, mock_template}) => {
     ls.set("drafts", data);
     assert.deepEqual(draft_model.get(), data);
 
-    override(realm, "realm_mandatory_topics", true);
+    override(realm, "realm_topics_policy", "disable_empty_topic");
     expected[5].topic_display_name = "";
     expected[5].is_empty_string_topic = false;
     assert.deepEqual(draft_model.get(), data);
@@ -646,8 +646,8 @@ test("format_drafts", ({override, override_rewire, mock_template}) => {
 
     mock_template("draft_table_body.hbs", false, (data) => {
         // Tests formatting and time-sorting of drafts
-        assert.deepEqual(data.narrow_drafts, []);
-        assert.deepEqual(data.other_drafts, expected);
+        assert.deepEqual(data.context.narrow_drafts, []);
+        assert.deepEqual(data.context.other_drafts, expected);
         assert.ok(data);
         return "<draft table stub>";
     });
@@ -657,6 +657,7 @@ test("format_drafts", ({override, override_rewire, mock_template}) => {
     const $unread_count = $("<unread-count-stub>");
     $(".top_left_drafts").set_find_results(".unread_count", $unread_count);
 
+    $.create(".drafts-list", {children: []});
     $.create("#drafts_table .overlay-message-row", {children: []});
     $(".draft-selection-checkbox").filter = () => [];
     drafts_overlay_ui.launch();
@@ -800,8 +801,8 @@ test("filter_drafts", ({override, override_rewire, mock_template}) => {
 
     mock_template("draft_table_body.hbs", false, (data) => {
         // Tests splitting up drafts by current narrow.
-        assert.deepEqual(data.narrow_drafts, expected_pm_drafts);
-        assert.deepEqual(data.other_drafts, expected_other_drafts);
+        assert.deepEqual(data.context.narrow_drafts, expected_pm_drafts);
+        assert.deepEqual(data.context.other_drafts, expected_other_drafts);
         return "<draft table stub>";
     });
 
@@ -813,6 +814,7 @@ test("filter_drafts", ({override, override_rewire, mock_template}) => {
     override(user_pill, "get_user_ids", () => [aaron.user_id]);
     compose_state.set_message_type("private");
 
+    $.create(".drafts-list", {children: []});
     $.create("#drafts_table .overlay-message-row", {children: []});
     $(".draft-selection-checkbox").filter = () => [];
     drafts_overlay_ui.launch();

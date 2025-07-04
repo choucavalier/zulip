@@ -1,14 +1,17 @@
 import $ from "jquery";
 import assert from "minimalistic-assert";
+import type * as tippy from "tippy.js";
 import {z} from "zod";
 
 import render_confirm_disable_all_notifications from "../templates/confirm_dialog/confirm_disable_all_notifications.hbs";
+import render_confirm_reset_stream_notifications from "../templates/confirm_dialog/confirm_reset_stream_notifications.hbs";
 import render_stream_specific_notification_row from "../templates/settings/stream_specific_notification_row.hbs";
 
 import * as banners from "./banners.ts";
 import * as blueslip from "./blueslip.ts";
 import * as channel from "./channel.ts";
 import * as confirm_dialog from "./confirm_dialog.ts";
+import * as dropdown_widget from "./dropdown_widget.ts";
 import {$t, $t_html} from "./i18n.ts";
 import * as message_notifications from "./message_notifications.ts";
 import {page_params} from "./page_params.ts";
@@ -19,6 +22,7 @@ import * as settings_ui from "./settings_ui.ts";
 import {realm} from "./state_data.ts";
 import * as stream_data from "./stream_data.ts";
 import * as stream_settings_api from "./stream_settings_api.ts";
+import type {SubData} from "./stream_settings_api.ts";
 import * as stream_settings_data from "./stream_settings_data.ts";
 import {stream_specific_notification_settings_schema} from "./stream_types.ts";
 import * as sub_store from "./sub_store.ts";
@@ -33,6 +37,8 @@ import {
 import * as util from "./util.ts";
 
 export let user_settings_panel: SettingsPanel | undefined;
+let customize_stream_notifications_widget: dropdown_widget.DropdownWidget;
+const stream_ids_with_custom_notifications = new Set<number>();
 
 const DESKTOP_NOTIFICATIONS_BANNER: banners.Banner = {
     intent: "warning",
@@ -42,7 +48,7 @@ const DESKTOP_NOTIFICATIONS_BANNER: banners.Banner = {
     buttons: [
         {
             label: $t({defaultMessage: "Enable notifications"}),
-            custom_classes: "request-desktop-notifications",
+            custom_classes: "desktop-notifications-request",
             attention: "primary",
         },
     ],
@@ -63,6 +69,7 @@ function rerender_ui(): void {
     $unmatched_streams_table.find(".stream-notifications-row").remove();
 
     const muted_stream_ids = stream_data.muted_stream_ids();
+    stream_ids_with_custom_notifications.clear();
 
     for (const stream of unmatched_streams) {
         $unmatched_streams_table.append(
@@ -75,15 +82,23 @@ function rerender_ui(): void {
                         settings_config.all_notifications(user_settings)
                             .disabled_notification_settings,
                     muted: muted_stream_ids.includes(stream.stream_id),
+                    push_notifications_disabled: !realm.realm_push_notifications_enabled,
                 }),
             ),
         );
+        stream_ids_with_custom_notifications.add(stream.stream_id);
     }
 
     if (unmatched_streams.length === 0) {
         $unmatched_streams_table.css("display", "none");
+        $("#customize_stream_notifications_widget .dropdown_widget_value").text(
+            $t({defaultMessage: "Customize a channel"}),
+        );
     } else {
         $unmatched_streams_table.css("display", "table-row-group");
+        $("#customize_stream_notifications_widget .dropdown_widget_value").text(
+            $t({defaultMessage: "Customize another channel"}),
+        );
     }
     update_desktop_notification_banner();
 }
@@ -186,9 +201,7 @@ export function set_enable_marketing_emails_visibility(): void {
     }
 }
 
-function stream_notification_setting_changed(target: HTMLInputElement): void {
-    const $row = $(target).closest(".stream-notifications-row");
-    const stream_id = Number.parseInt($row.attr("data-stream-id")!, 10);
+function stream_notification_setting_changed(target: HTMLInputElement, stream_id: number): void {
     if (!stream_id) {
         blueslip.error("Cannot find stream id for target");
         return;
@@ -208,6 +221,91 @@ function stream_notification_setting_changed(target: HTMLInputElement): void {
         {property: setting, value: target.checked},
         $status_element,
     );
+}
+
+function change_state_of_customize_stream_notifications_widget(
+    event: JQuery.ClickEvent,
+    dropdown: tippy.Instance,
+): void {
+    dropdown.hide();
+    event.preventDefault();
+    event.stopPropagation();
+
+    assert(customize_stream_notifications_widget !== undefined);
+    customize_stream_notifications_widget.render();
+    const stream_id = customize_stream_notifications_widget.value();
+    assert(typeof stream_id === "number");
+
+    const $customizable_stream_notifications_table = $("#customizable_stream_notifications_table");
+    $customizable_stream_notifications_table.find("input[type='checkbox']").prop("disabled", false);
+
+    if (!realm.realm_push_notifications_enabled) {
+        $customizable_stream_notifications_table
+            .find("input.push_notifications")
+            .prop("disabled", true);
+    }
+
+    for (const notification_setting of settings_config.stream_specific_notification_settings) {
+        const checked_state = stream_data.receives_notifications(stream_id, notification_setting);
+        $customizable_stream_notifications_table
+            .find(`.${CSS.escape(notification_setting)}`)
+            .prop("checked", checked_state);
+    }
+}
+
+function get_streams_to_customize_notifications(): dropdown_widget.Option[] {
+    return stream_data
+        .get_options_for_dropdown_widget()
+        .filter(({stream}) => !stream_ids_with_custom_notifications.has(stream.stream_id));
+}
+
+function render_customize_stream_notifications_widget(): void {
+    customize_stream_notifications_widget = new dropdown_widget.DropdownWidget({
+        widget_name: "customize_stream_notifications",
+        get_options: get_streams_to_customize_notifications,
+        item_click_callback: change_state_of_customize_stream_notifications_widget,
+        $events_container: $("#user-notification-settings .notification-settings-form"),
+        unique_id_type: "number",
+    });
+    customize_stream_notifications_widget.setup();
+}
+
+export function do_reset_stream_notifications(elem: HTMLElement, sub: StreamSubscription): void {
+    const data: SubData = [{stream_id: sub.stream_id, property: "is_muted", value: false}];
+    for (const [per_stream_setting_name, global_setting_name] of Object.entries(
+        settings_config.generalize_stream_notification_setting,
+    )) {
+        data.push({
+            stream_id: sub.stream_id,
+            property: stream_specific_notification_settings_schema
+                .keyof()
+                .parse(per_stream_setting_name),
+            value: user_settings[global_setting_name],
+        });
+    }
+
+    stream_settings_api.bulk_set_stream_property(
+        data,
+        $(elem).closest(".subsection-parent").find(".alert-notification"),
+    );
+}
+
+function reset_stream_notifications(elem: HTMLElement): void {
+    const $row = $(elem).closest(".stream-notifications-row");
+    const stream_id = Number.parseInt($row.attr("data-stream-id")!, 10);
+    const sub = sub_store.get(stream_id);
+    assert(sub !== undefined);
+
+    const html_body = render_confirm_reset_stream_notifications({sub});
+
+    confirm_dialog.launch({
+        html_heading: $t_html({defaultMessage: "Reset to default notifications?"}),
+        html_body,
+        id: "confirm_reset_stream_notifications_modal",
+        on_click() {
+            do_reset_stream_notifications(elem, sub);
+        },
+    });
 }
 
 export function set_up(settings_panel: SettingsPanel): void {
@@ -273,6 +371,26 @@ export function set_up(settings_panel: SettingsPanel): void {
         settings_object.automatically_unmute_topics_in_muted_streams_policy,
     );
 
+    update_desktop_notification_banner();
+
+    $container.on("click", ".desktop-notifications-request", (e) => {
+        e.preventDefault();
+        // This is only accessed via the notifications banner, so we
+        // do not need to do a mobile check here--as that banner is
+        // not shown in a mobile context anyway.
+        void Notification.requestPermission().then((permission) => {
+            if (permission === "granted") {
+                update_desktop_notification_banner();
+            } else if (permission === "denied") {
+                window.open(
+                    "/help/desktop-notifications#check-platform-settings",
+                    "_blank",
+                    "noopener noreferrer",
+                );
+            }
+        });
+    });
+
     set_enable_digest_emails_visibility($container, for_realm_settings);
 
     if (for_realm_settings) {
@@ -289,8 +407,18 @@ export function set_up(settings_panel: SettingsPanel): void {
         e.stopPropagation();
         const $input_elem = $(e.currentTarget);
         if ($input_elem.parents("#stream-specific-notify-table").length > 0) {
+            const $row = $input_elem.closest(".stream-notifications-row");
+            const stream_id = Number.parseInt($row.attr("data-stream-id")!, 10);
             assert(e.currentTarget instanceof HTMLInputElement);
-            stream_notification_setting_changed(e.currentTarget);
+            stream_notification_setting_changed(e.currentTarget, stream_id);
+            return;
+        }
+        if ($input_elem.parents("#customizable_stream_notifications_table").length > 0) {
+            assert(e.currentTarget instanceof HTMLInputElement);
+            assert(customize_stream_notifications_widget !== undefined);
+            const stream_id = customize_stream_notifications_widget.value();
+            assert(typeof stream_id === "number");
+            stream_notification_setting_changed(e.currentTarget, stream_id);
             return;
         }
 
@@ -382,30 +510,13 @@ export function set_up(settings_panel: SettingsPanel): void {
         );
     });
 
-    $("#settings_content").on("click", ".request-desktop-notifications", (e) => {
-        e.preventDefault();
-        // This is only accessed via the notifications banner, so we
-        // do not need to do a mobile check here--as that banner is
-        // not shown in a mobile context anyway.
-        void Notification.requestPermission().then((permission) => {
-            if (permission === "granted") {
-                update_desktop_notification_banner();
-            } else if (permission === "denied") {
-                window.open(
-                    "/help/desktop-notifications#check-platform-settings",
-                    "_blank",
-                    "noopener noreferrer",
-                );
-            }
-        });
-    });
-
     $("#settings_content").on("click", ".banner-close-button", (e) => {
         e.preventDefault();
         $(".banner-wrapper").remove();
     });
 
     set_enable_marketing_emails_visibility();
+    render_customize_stream_notifications_widget();
     rerender_ui();
 }
 
@@ -451,6 +562,12 @@ export function update_page(settings_panel: SettingsPanel): void {
             }
         }
     }
+    $container
+        .find("#customizable_stream_notifications_table input[type='checkbox']")
+        .each(function () {
+            $(this).prop("disabled", true).prop("checked", false);
+        });
+
     rerender_ui();
 }
 
@@ -495,4 +612,12 @@ export function initialize(): void {
             $row.closest(".subsection-parent").find(".alert-notification"),
         );
     });
+
+    $("body").on(
+        "click",
+        "#stream-specific-notify-table .reset_stream_notifications",
+        function on_click(this: HTMLElement) {
+            reset_stream_notifications(this);
+        },
+    );
 }

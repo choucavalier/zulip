@@ -319,8 +319,8 @@ $(() => {
         $("#new-user-email-address-visibility .current-selected-option").text(selected_option_text);
     });
 
-    $("#registration").on("click keypress", ".edit-realm-details", (e) => {
-        if (e.type === "keypress" && e.key !== "Enter") {
+    $("#registration").on("click keydown", ".edit-realm-details", (e) => {
+        if (e.type === "keydown" && e.key !== "Enter") {
             return;
         }
 
@@ -332,6 +332,13 @@ $(() => {
         $("#id_team_name").val("").val(name_val);
 
         $(e.target).hide();
+    });
+
+    $("form.select-email-form").on("keydown", function (e) {
+        if (e.key === "Enter") {
+            e.preventDefault();
+            $(this).trigger("submit");
+        }
     });
 
     $<HTMLSelectElement>("#how-realm-creator-found-zulip select").on("change", function () {
@@ -400,6 +407,23 @@ $(() => {
             meta: {
                 key,
             },
+            locale: {
+                strings: {
+                    youCanOnlyUploadFileTypes: $t({
+                        defaultMessage: "Upload your Slack export zip file.",
+                    }),
+                },
+                // Copied from
+                // https://github.com/transloadit/uppy/blob/d1a3345263b3421a06389aa2e84c66e894b3f29d/packages/%40uppy/utils/src/Translator.ts#L122
+                // since we don't want to override the default function.
+                // Defining pluralize is required by typescript.
+                pluralize(n: number): 0 | 1 {
+                    if (n === 1) {
+                        return 0;
+                    }
+                    return 1;
+                },
+            },
         });
         uppy.use(DragDrop, {
             target: "#slack-import-drag-and-drop",
@@ -417,7 +441,14 @@ $(() => {
                 },
             },
         });
-        uppy.use(Tus, {endpoint: "/api/v1/tus/", removeFingerprintOnSuccess: true});
+        uppy.use(Tus, {
+            endpoint: "/api/v1/tus/",
+            // Allow user to upload the same file multiple times.
+            removeFingerprintOnSuccess: true,
+        });
+        uppy.on("restriction-failed", (_file, error) => {
+            $("#slack-import-file-upload-error").text(error.message);
+        });
         uppy.on("upload-error", (_file, error) => {
             $("#slack-import-file-upload-error").text(error.message);
         });
@@ -425,6 +456,11 @@ $(() => {
             assert(file !== undefined);
             $("#slack-import-start-upload-wrapper").removeClass("hidden");
             $("#slack-import-uploaded-file-name").text(file.name!);
+            $("#slack-import-file-upload-error").text("");
+        });
+        // Reset uppy state to allow user replace existing uploaded file.
+        uppy.on("complete", () => {
+            uppy.clear();
         });
     }
 

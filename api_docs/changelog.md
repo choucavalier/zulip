@@ -20,6 +20,134 @@ format used by the Zulip server that they are interacting with.
 
 ## Changes in Zulip 11.0
 
+**Feature level 401**
+
+* [`POST /register`](/api/register-queue), [`PATCH
+  /settings`](/api/update-settings), [`PATCH
+  /realm/user_settings_defaults`](/api/update-realm-user-settings-defaults):
+  Added new option in user setting `web_channel_default_view`, to navigate
+  to top unread topic in channel.
+
+**Feature level 400**
+
+* [Markdown message formatting](/api/message-formatting#links-to-channels-topics-and-messages):
+  The server now prefers the latest message in a topic, not the
+  oldest, when constructing topic permalinks using the `/with/` operator.
+
+**Feature level 399**
+
+* [`GET /events`](/api/get-events):
+  Added `reminders` events sent to clients when a user creates
+  or deletes scheduled messages.
+* [`GET /reminders`](/api/get-reminders):
+  Clients can now request `/reminders` endpoint to fetch all
+  scheduled reminders.
+* [`DELETE /reminders/{reminder_id}`](/api/delete-reminder):
+  Clients can now delete a scheduled reminder.
+
+**Feature level 398**
+
+* [`POST /register`](/api/register-queue), [`PATCH /settings`](/api/update-settings),
+  [`PATCH /realm/user_settings_defaults`](/api/update-realm-user-settings-defaults):
+  Added new `web_left_sidebar_unreads_count_summary` display setting,
+  controlling whether summary unread counts are displayed in the left sidebar.
+
+**Feature level 397**
+
+* [`POST /users/me/subscriptions`](/api/subscribe): Added parameter
+  `send_new_subscription_messages` which determines whether the user
+  would like Notification Bot to notify other users who the request
+  adds to a channel.
+
+* [`POST /users/me/subscriptions`](/api/subscribe): Added
+  `new_subscription_messages_sent` to the response, which is only
+  present if `send_new_subscription_messages` was `true` in the request.
+
+* [`POST /register`](/api/register-queue): Added `max_bulk_new_subscription_messages`
+  to the response.
+
+**Feature level 396**
+
+* [`GET /users/me/subscriptions`](/api/get-subscriptions),
+  [`GET /streams`](/api/get-streams), [`GET /events`](/api/get-events),
+  [`POST /register`](/api/register-queue): Added `can_move_messages_within_channel_group`
+  field which is a [group-setting value](/api/group-setting-values) describing the
+  set of users with permissions to move messages within the channel.
+* [`POST /users/me/subscriptions`](/api/subscribe),
+  [`PATCH /streams/{stream_id}`](/api/update-stream): Added
+  `can_move_messages_within_channel_group` parameter to support setting and
+  changing the user group whose members can move messages within the specified
+  channel.
+* [`GET /users/me/subscriptions`](/api/get-subscriptions),
+  [`GET /streams`](/api/get-streams), [`GET /events`](/api/get-events),
+  [`POST /register`](/api/register-queue): Added `can_move_messages_out_of_channel_group`
+  field which is a [group-setting value](/api/group-setting-values) describing the
+  set of users with permissions to move messages out of the channel.
+* [`POST /users/me/subscriptions`](/api/subscribe),
+  [`PATCH /streams/{stream_id}`](/api/update-stream): Added
+  `can_move_messages_out_of_channel_group` parameter to support setting and
+  changing the user group whose members can move messages out of the specified
+  channel.
+
+**Feature level 395**
+
+* [Markdown message
+  formatting](/api/message-formatting#removed-features): Previously,
+  Zulip's Markdown syntax had special support for previewing Dropbox
+  albums. Dropbox albums no longer exist, and links to Dropbox folders
+  now consistently use Zulip's standard open graph preview markup.
+
+**Feature level 394**
+
+* [`POST /register`](/api/register-queue), [`GET
+  /events`](/api/get-events), [`GET /streams`](/api/get-streams),
+  [`GET /streams/{stream_id}`](/api/get-stream-by-id):: Added a new
+  field `subscriber_count` to Stream and Subscription objects with the
+  total number of non-deactivated users who are subscribed to the
+  channel.
+
+**Feature level 393**
+
+* [`PATCH /messages/{message_id}`](/api/delete-message),
+  [`POST /register`](/api/register-queue), [`GET /events`](/api/get-events):
+  In `delete_message` event, all the `message_ids` will now be sorted in
+  increasing order.
+* [`PATCH /messages/{message_id}`](/api/update-message),
+  [`POST /register`](/api/register-queue), [`GET /events`](/api/get-events):
+  In `update_message` event, all the `message_ids` will now be sorted in
+  increasing order.
+
+**Feature level 392**
+
+* [`GET /users/me/subscriptions`](/api/get-subscriptions),
+  [`GET /streams`](/api/get-streams), [`GET /events`](/api/get-events),
+  [`POST /register`](/api/register-queue): Added `topics_policy`
+  field to Stream and Subscription objects.
+* [`POST /users/me/subscriptions`](/api/subscribe),
+  [`PATCH /streams/{stream_id}`](/api/update-stream): Added
+  `topics_policy` parameter to support setting and changing the
+  the configuration for sending messages in the empty topic of the
+  channel.
+* `PATCH /realm`, [`POST /register`](/api/register-queue),
+  [`GET /events`](/api/get-events): Added `can_set_topics_policy_group`
+  realm setting, which is a [group-setting value](/api/group-setting-values)
+  describing the set of users with permission to change per-channel `topics_policy`
+  setting.
+* `PATCH /realm`, [`GET /events`](/api/get-events),
+  [`POST /register`](/api/register-queue):
+  Added a new realm setting, `topics_policy` defining the
+  default configuration for sending messages in empty topics.
+* [`GET /events`](/api/get-events), [`POST /register`](/api/register-queue):
+  Deprecated `mandatory_topics` field in favor of `topics_policy` realm setting.
+* `PATCH /realm`: Removed `mandatory_topics` field as it is now replaced by
+  `topics_policy` field.
+
+**Feature level 391**
+
+* [`POST /user_groups/{user_group_id}/members`](/api/update-user-group-members),
+  [`POST /user_groups/{user_group_id}/subgroups`](/api/update-user-group-subgroups):
+  Adding/removing members and subgroups to a deactivated group is now allowed.
+
 **Feature level 390**
 
 * [`GET /events`](/api/get-events): Events with `type: "navigation_view"` are

@@ -21,19 +21,13 @@ messages you receive.
 
 {tab|mobile}
 
-{!mobile-profile-menu.md!}
+Access this feature by following the web app instructions in your
+mobile device browser.
 
-1. Tap **Settings**.
-
-1. Tap **Language**.
-
-1. Use the search bar or scroll through the list of languages.
-
-1. Select a language.
-
-1. Tap the **arrow**
-   (<img src="/static/images/help/mobile-chevron-left.svg" alt="back" class="help-center-icon"/>)
-   in the upper left corner of the app to exit the language selection menu.
+Implementation of this feature in the mobile app is tracked [on
+GitHub](https://github.com/zulip/zulip-flutter/issues/1139). If
+you're interested in this feature, please react to the issue's
+description with 👍.
 
 {end_tabs}
 

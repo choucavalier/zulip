@@ -11,6 +11,7 @@ import render_emoji_popover_search_results from "../templates/popovers/emoji/emo
 import render_emoji_showcase from "../templates/popovers/emoji/emoji_showcase.hbs";
 
 import * as blueslip from "./blueslip.ts";
+import * as common from "./common.ts";
 import * as compose_ui from "./compose_ui.ts";
 import * as composebox_typeahead from "./composebox_typeahead.ts";
 import * as emoji from "./emoji.ts";
@@ -571,14 +572,14 @@ export function navigate(event_name: string, e?: JQuery.KeyDownEvent): boolean {
     }
 }
 
-function process_keypress(e: JQuery.KeyPressEvent | JQuery.KeyDownEvent): void {
+function process_keydown(e: JQuery.KeyDownEvent): void {
     const is_filter_focused = $("#emoji-popover-filter").is(":focus");
-    const pressed_key = e.which;
+    const pressed_key = e.key;
     if (
         !is_filter_focused &&
-        // ':' => 58, is a hotkey for toggling reactions popover.
-        pressed_key !== 58 &&
-        ((pressed_key >= 32 && pressed_key <= 126) || pressed_key === 8)
+        // ":" is a hotkey for toggling reactions popover.
+        pressed_key !== ":" &&
+        (common.is_printable_ascii(pressed_key) || pressed_key === "Backspace")
     ) {
         // Handle only printable characters or Backspace.
         e.preventDefault();
@@ -588,13 +589,11 @@ function process_keypress(e: JQuery.KeyPressEvent | JQuery.KeyDownEvent): void {
         const old_query = $emoji_filter.val()!;
         let new_query = "";
 
-        if (pressed_key === 8) {
-            // Handles Backspace.
+        if (pressed_key === "Backspace") {
             new_query = old_query.slice(0, -1);
         } else {
             // Handles any printable character.
-            const key_str = String.fromCodePoint(e.which);
-            new_query = old_query + key_str;
+            new_query = old_query + pressed_key;
         }
 
         $emoji_filter.val(new_query);
@@ -647,16 +646,7 @@ function register_popover_events($popover: JQuery): void {
 
     $("#emoji-popover-filter").on("input", filter_emojis);
     $("#emoji-popover-filter").on("keydown", process_enter_while_filtering);
-    $(".emoji-popover").on("keypress", process_keypress);
-    $(".emoji-popover").on("keydown", (e) => {
-        // Because of cross-browser issues we need to handle Backspace
-        // key separately. Firefox fires `keypress` event for Backspace
-        // key but chrome doesn't so we need to trigger the logic for
-        // handling Backspace in `keydown` event which is fired by both.
-        if (e.which === 8) {
-            process_keypress(e);
-        }
-    });
+    $(".emoji-popover").on("keydown", process_keydown);
 }
 
 function get_default_emoji_popover_options(): Partial<tippy.Props> {

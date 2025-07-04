@@ -14,7 +14,7 @@ import * as settings_config from "./settings_config.ts";
 import * as settings_data from "./settings_data.ts";
 import type {CurrentUser, GroupSettingValue, StateData} from "./state_data.ts";
 import {current_user, realm} from "./state_data.ts";
-import type {StreamPermissionGroupSetting} from "./stream_types.ts";
+import type {StreamPermissionGroupSetting, StreamTopicsPolicy} from "./stream_types.ts";
 import * as sub_store from "./sub_store.ts";
 import type {
     ApiStreamSubscription,
@@ -443,12 +443,23 @@ export function update_message_retention_setting(
     sub.message_retention_days = message_retention_days;
 }
 
+export function update_topics_policy_setting(
+    sub: StreamSubscription,
+    topics_policy: StreamTopicsPolicy,
+): void {
+    sub.topics_policy = topics_policy;
+}
+
 export function update_stream_permission_group_setting(
     setting_name: StreamPermissionGroupSetting,
     sub: StreamSubscription,
     group_setting: GroupSettingValue,
 ): void {
     sub[setting_name] = group_setting;
+}
+
+export function update_channel_folder(sub: StreamSubscription, folder_id: number | null): void {
+    sub.folder_id = folder_id;
 }
 
 export function receives_notifications(
@@ -624,6 +635,24 @@ export function can_administer_channel(sub: StreamSubscription): boolean {
     );
 }
 
+export function user_can_set_topics_policy(sub?: StreamSubscription): boolean {
+    if (current_user.is_admin) {
+        return true;
+    }
+
+    const user_can_set_topics_policy = settings_data.user_has_permission_for_group_setting(
+        realm.realm_can_set_topics_policy_group,
+        "can_set_topics_policy_group",
+        "realm",
+    );
+
+    // This handles the case when the stream is being created.
+    if (sub === undefined) {
+        return user_can_set_topics_policy;
+    }
+    return user_can_set_topics_policy && can_administer_channel(sub);
+}
+
 export function can_toggle_subscription(sub: StreamSubscription): boolean {
     if (page_params.is_spectator) {
         return false;
@@ -794,6 +823,64 @@ export function rewire_can_post_messages_in_stream(
     value: typeof can_post_messages_in_stream,
 ): void {
     can_post_messages_in_stream = value;
+}
+
+export function user_can_move_messages_out_of_channel(stream: StreamSubscription): boolean {
+    if (page_params.is_spectator) {
+        return false;
+    }
+
+    if (stream.is_archived) {
+        return false;
+    }
+
+    const user_can_administer_channel = settings_data.user_has_permission_for_group_setting(
+        stream.can_administer_channel_group,
+        "can_administer_channel_group",
+        "stream",
+    );
+
+    if (user_can_administer_channel) {
+        return true;
+    }
+
+    return (
+        settings_data.user_can_move_messages_between_streams() ||
+        settings_data.user_has_permission_for_group_setting(
+            stream.can_move_messages_out_of_channel_group,
+            "can_move_messages_out_of_channel_group",
+            "stream",
+        )
+    );
+}
+
+export function user_can_move_messages_within_channel(stream: StreamSubscription): boolean {
+    if (page_params.is_spectator) {
+        return false;
+    }
+
+    if (stream.is_archived) {
+        return false;
+    }
+
+    const user_can_administer_channel = settings_data.user_has_permission_for_group_setting(
+        stream.can_administer_channel_group,
+        "can_administer_channel_group",
+        "stream",
+    );
+
+    if (user_can_administer_channel) {
+        return true;
+    }
+
+    return (
+        settings_data.user_can_move_messages_to_another_topic() ||
+        settings_data.user_has_permission_for_group_setting(
+            stream.can_move_messages_within_channel_group,
+            "can_move_messages_within_channel_group",
+            "stream",
+        )
+    );
 }
 
 export function is_subscribed(stream_id: number): boolean {
@@ -986,6 +1073,28 @@ export function get_streams_for_admin(): StreamSubscription[] {
     subs.sort(by_name);
 
     return subs;
+}
+
+// Since whether or not you can use general chat depends on the
+// channel, if we don't know what channel is involved, we do not
+// consider general chat permitted. This generally comes up in
+// situations like drafts without a specified recipient or compose box
+// placeholders when looking at a view that does not indicate a specific
+// channel.
+export function can_use_empty_topic(stream_id: number | undefined): boolean {
+    if (stream_id === undefined) {
+        return false;
+    }
+    const sub = sub_store.get(stream_id);
+    assert(sub !== undefined);
+
+    let topics_policy = sub.topics_policy;
+    if (sub.topics_policy === settings_config.get_stream_topics_policy_values().inherit.code) {
+        topics_policy = realm.realm_topics_policy;
+    }
+    return (
+        topics_policy === settings_config.get_realm_topics_policy_values().allow_empty_topic.code
+    );
 }
 
 /*

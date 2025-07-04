@@ -52,7 +52,6 @@ from zerver.lib.send_email import (
     send_email_to_users_with_billing_access_and_realm_owners,
 )
 from zerver.lib.timestamp import datetime_to_timestamp, timestamp_to_datetime
-from zerver.lib.url_encoding import append_url_query_string
 from zerver.lib.utils import assert_is_not_none
 from zerver.models import Realm, RealmAuditLog, Stream, UserProfile
 from zerver.models.realm_audit_logs import AuditLogEventType
@@ -378,10 +377,7 @@ def payment_method_string(stripe_customer: stripe.Customer) -> str:
 
 def build_support_url(support_view: str, query_text: str) -> str:
     support_realm_url = get_realm(settings.STAFF_SUBDOMAIN).url
-    support_url = urljoin(support_realm_url, reverse(support_view))
-    query = urlencode({"q": query_text})
-    support_url = append_url_query_string(support_url, query)
-    return support_url
+    return urljoin(support_realm_url, reverse(support_view, query={"q": query_text}))
 
 
 def get_configured_fixed_price_plan_offer(
@@ -3353,11 +3349,11 @@ class BillingSession(ABC):
 
         plan.invoicing_status = CustomerPlan.INVOICING_STATUS_DONE
         plan.next_invoice_date = next_invoice_date(plan)
-        plan.invoice_overdue_email_sent = False
+        plan.stale_audit_log_data_email_sent = False
         plan.save(
             update_fields=[
                 "next_invoice_date",
-                "invoice_overdue_email_sent",
+                "stale_audit_log_data_email_sent",
                 "invoicing_status",
             ]
         )
@@ -5456,7 +5452,7 @@ def maybe_send_fixed_price_plan_renewal_reminder_email(
         plan.save(update_fields=["reminder_to_review_plan_email_sent"])
 
 
-def maybe_send_invoice_overdue_email(
+def maybe_send_stale_audit_log_data_email(
     plan: CustomerPlan,
     billing_session: BillingSession,
     next_invoice_date: datetime,
@@ -5470,7 +5466,7 @@ def maybe_send_invoice_overdue_email(
             "billing_entity": billing_session.billing_entity_display_name,
             "support_url": billing_session.support_url(),
             "last_audit_log_update": "Never uploaded",
-            "notice_reason": "invoice_overdue",
+            "notice_reason": "stale_audit_log_data",
         }
         send_email(
             "zerver/emails/internal_billing_notice",
@@ -5478,8 +5474,8 @@ def maybe_send_invoice_overdue_email(
             from_address=FromAddress.tokenized_no_reply_address(),
             context=context,
         )
-        plan.invoice_overdue_email_sent = True
-        plan.save(update_fields=["invoice_overdue_email_sent"])
+        plan.stale_audit_log_data_email_sent = True
+        plan.save(update_fields=["stale_audit_log_data_email_sent"])
         return
 
     if next_invoice_date - last_audit_log_update < timedelta(days=1):  # nocoverage
@@ -5492,7 +5488,7 @@ def maybe_send_invoice_overdue_email(
         "billing_entity": billing_session.billing_entity_display_name,
         "support_url": billing_session.support_url(),
         "last_audit_log_update": last_audit_log_update.strftime("%Y-%m-%d"),
-        "notice_reason": "invoice_overdue",
+        "notice_reason": "stale_audit_log_data",
     }
     send_email(
         "zerver/emails/internal_billing_notice",
@@ -5500,8 +5496,8 @@ def maybe_send_invoice_overdue_email(
         from_address=FromAddress.tokenized_no_reply_address(),
         context=context,
     )
-    plan.invoice_overdue_email_sent = True
-    plan.save(update_fields=["invoice_overdue_email_sent"])
+    plan.stale_audit_log_data_email_sent = True
+    plan.save(update_fields=["stale_audit_log_data_email_sent"])
 
 
 def check_remote_server_audit_log_data(
@@ -5517,8 +5513,8 @@ def check_remote_server_audit_log_data(
     next_invoice_date = plan.next_invoice_date
     last_audit_log_update = remote_server.last_audit_log_update
     if last_audit_log_update is None or next_invoice_date > last_audit_log_update:
-        if not plan.invoice_overdue_email_sent:
-            maybe_send_invoice_overdue_email(
+        if not plan.stale_audit_log_data_email_sent:
+            maybe_send_stale_audit_log_data_email(
                 plan, billing_session, next_invoice_date, last_audit_log_update
             )
 

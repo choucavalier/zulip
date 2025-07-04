@@ -487,9 +487,9 @@
     /*
     Compose-recipient box minimum height. Used in a flexbox context to
     allow elements like DM pills to stack without breaking out of their
-    flex item. 2.1786em is 30.5px at 14px/1em.
+    flex item. 2em is 32px at 16px/1em.
     */
-    --compose-recipient-box-min-height: 2.1786em;
+    --compose-recipient-box-min-height: 2em;
     /* 28px at 14px/1em */
     /* Note that this variable can only be used in contexts where
        the font-size doesn't deviate from the base font-size;
@@ -521,6 +521,10 @@
     @media (width < $sm_min) {
         --compose-send-controls-width: 28px;
     }
+
+    /* Compose-specific transitions and delays. */
+    --compose-recipient-row-transition-delay: 100ms;
+    --compose-recipient-row-transition: 150ms ease;
 
     /*
     User group info popover elements and values.
@@ -569,7 +573,7 @@
        preserve an apparent border around
        them, and a square aspect-ratio, even under
        `box-sizing: border-box` in the area. */
-    --length-input-pill-image: calc(var(--height-input-pill) - 2px);
+    --length-search-input-pill-image: calc(var(--height-input-pill) - 2px);
     --length-input-pill-exit: 1.1429em; /* 16px at 14px/em */
     --input-pill-side-padding: 0.3571em; /* 5px at 14px/em */
     --vertical-spacing-input-pill: 2px;
@@ -675,6 +679,14 @@
 
     /* Popup banner related variables */
     --popup-banner-translate-y-distance: 100px;
+
+    /* Input grid layout variables */
+    --input-icon-starting-offset: 0.5em; /* 8px at 16px/1em */
+    --input-icon-width: 1em; /* 16px at 16px/1em */
+    --input-icon-content-gap: 0.4375em; /* 7px at 16px/1em */
+    --input-button-content-gap: 0.25em; /* 4px at 16px/1em */
+    --input-button-width: 1.5em; /* 24px at 16px/1em */
+    --input-button-ending-offset: 0.125em; /* 2px at 16px/1em */
 
     /* Colors used across the app */
     --color-date: light-dark(hsl(0deg 0% 15% / 75%), hsl(0deg 0% 100% / 75%));
@@ -1126,6 +1138,10 @@
         color-mix(in srgb, hsl(0deg 0% 0%) 10%, hsl(232deg 20% 92%)),
         hsl(0deg 0% 0% / 80%)
     );
+    --color-compose-recipient-box-hover: light-dark(
+        hsl(0deg 0% 69%),
+        hsl(0deg 0% 100% / 12%)
+    );
     --color-compose-recipient-box-has-focus: light-dark(
         hsl(0deg 0% 57%),
         hsl(0deg 0% 100% / 27%)
@@ -1448,10 +1464,6 @@
     --color-realm-enable-spectator-access-link: light-dark(
         hsl(0deg 0% 20%),
         hsl(236deg 33% 90%)
-    );
-    --color-unmute-stream-hover: light-dark(
-        hsl(0deg 0% 20%),
-        hsl(0deg 0% 100%)
     );
 
     /* Markdown colors */
@@ -1808,6 +1820,14 @@
         hsl(240deg 70% 70% / 30%),
         hsl(240deg 52% 60% / 45%)
     );
+    --color-border-input-pill-image: light-dark(
+        hsl(237deg 68% 94% / 50%),
+        hsl(240deg 65% 60% / 60%)
+    );
+    --color-outline-low-attention-input-pill: light-dark(
+        hsl(237deg 68% 88%),
+        hsl(240deg 65% 60% / 22%)
+    );
     --color-focus-outline-input-pill: light-dark(
         hsl(240deg 50% 50%),
         hsl(0deg 0% 100% / 60%)
@@ -1850,8 +1870,7 @@
     );
 
     /* Inbox view constants - Values from Figma design */
-    --height-inbox-search: 1.8571em; /* 26px / 14px em */
-    --width-inbox-search: 24.7142em; /* 346px / 14px em */
+    --width-inbox-search: 29.0625em; /* 465px / 16px em */
     --width-inbox-filters-dropdown: 10.7142em; /* 150px / 14px em */
     --color-background-inbox-no-unreads-illustration: light-dark(
         hsl(147deg 57% 25%),
@@ -1998,7 +2017,7 @@
         hsl(0deg 0% 46.7%),
         hsl(236deg 33% 90%)
     );
-    --icon-chevron-down: url("data:image/svg+xml,%3Csvg width='16' height='16' viewBox='0 0 16 16' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath fill-rule='evenodd' clip-rule='evenodd' d='M3.52977 5.52973C3.78947 5.27004 4.21053 5.27004 4.47023 5.52973L8 9.05951L11.5298 5.52973C11.7895 5.27004 12.2105 5.27004 12.4702 5.52973C12.7299 5.78943 12.7299 6.21049 12.4702 6.47019L8.47023 10.4702C8.21053 10.7299 7.78947 10.7299 7.52977 10.4702L3.52977 6.47019C3.27008 6.21049 3.27008 5.78943 3.52977 5.52973Z' fill='%23333333'/%3E%3C/svg%3E%0A");
+    --icon-chevron-down: url("data:image/svg+xml,%3Csvg width='16' height='16' viewBox='0 0 16 16' fill='%23333333' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath clip-rule='evenodd' d='M3.52977 5.52973C3.78947 5.27004 4.21053 5.27004 4.47023 5.52973L8 9.05951L11.5298 5.52973C11.7895 5.27004 12.2105 5.27004 12.4702 5.52973C12.7299 5.78943 12.7299 6.21049 12.4702 6.47019L8.47023 10.4702C8.21053 10.7299 7.78947 10.7299 7.52977 10.4702L3.52977 6.47019C3.27008 6.21049 3.27008 5.78943 3.52977 5.52973Z'/%3E%3C/svg%3E");
 
     /* Button colors on modals and message editing. */
     /* Don't define light theme colors for modal here
@@ -2038,6 +2057,8 @@
     );
     /* The SVG must be adjusted when changing the border color above. */
     --svg-url-rendered-checkbox: url("../images/checkbox.svg");
+    /* Nested checkboxes in settings menu */
+    --settings-nested-checkbox-vertical-margins: 0.3125em 0; /* 5px at 16px */
 
     /* Theme-dependent SVGs */
     --svg-url-thumbnail-loader: url("../images/loading/loader-black.svg");
@@ -2103,7 +2124,7 @@
         hsl(0deg 0% 100%)
     );
     --outline-width-button-focus: 1.5px;
-    --outline-offset-button-focus: 1px;
+    --outline-offset-button-focus: 0;
     /* Actions buttons */
     --color-inner-shadow-action-button: light-dark(
         color-mix(in oklch, hsl(0deg 0% 0%) 20%, transparent),
@@ -2603,6 +2624,39 @@
         hsl(0deg 52% 18%)
     );
 
+    /* Inputs */
+    --color-text-input: light-dark(
+        color-mix(in oklch, hsl(0deg 0% 15%) 50%, transparent),
+        color-mix(in oklch, hsl(0deg 0% 83%) 50%, transparent)
+    );
+    --color-text-input-focus: light-dark(hsl(0deg 0% 15%), hsl(0deg 0% 83%));
+    /* TODO: Light mode uses browser-default white
+       backgrounds; we should extend the use of this
+       color variable to 1) explicitly set the
+       background color of inputs, and 2) clean up a
+       lingering stack of selectors in dark_theme.css. */
+    --color-background-input: light-dark(hsl(0deg 0% 100%), hsl(220deg 6% 10%));
+    --color-background-input-focus: light-dark(
+        hsl(0deg 0% 100%),
+        hsl(240deg 6% 7%)
+    );
+    --color-border-input: light-dark(
+        color-mix(in oklch, hsl(229deg 22% 10%) 30%, transparent),
+        color-mix(in oklch, hsl(0deg 0% 100%) 20%, transparent)
+    );
+    --color-border-input-hover: light-dark(
+        color-mix(in oklch, hsl(229deg 22% 10%) 30%, transparent),
+        color-mix(in oklch, hsl(0deg 0% 100%) 20%, transparent)
+    );
+    --color-border-input-focus: light-dark(
+        color-mix(in oklch, hsl(229deg 22% 10%) 80%, transparent),
+        color-mix(in oklch, hsl(0deg 0% 100%) 50%, transparent)
+    );
+    --color-box-shadow-input-focus: light-dark(
+        color-mix(in oklch, hsl(228deg 10% 20%) 30%, transparent),
+        color-mix(in oklch, hsl(0deg 0% 100%) 40%, transparent)
+    );
+
     /* .main-view-banner colors */
     --color-success-main-view-banner: light-dark(
         hsl(147deg 57% 25%),
@@ -2823,7 +2877,7 @@
         0 12.177px 21.4737px 0 hsl(0deg 0% 0% / 11%),
         0 18.7257px 35.4802px 0 hsl(0deg 0% 0% / 15%),
         0 41px 80px 0 hsl(0deg 0% 0% / 20%);
-    --icon-chevron-down: url("data:image/svg+xml,%3Csvg width='16' height='16' viewBox='0 0 16 16' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath fill-rule='evenodd' clip-rule='evenodd' d='M3.52977 5.52973C3.78947 5.27004 4.21053 5.27004 4.47023 5.52973L8 9.05951L11.5298 5.52973C11.7895 5.27004 12.2105 5.27004 12.4702 5.52973C12.7299 5.78943 12.7299 6.21049 12.4702 6.47019L8.47023 10.4702C8.21053 10.7299 7.78947 10.7299 7.52977 10.4702L3.52977 6.47019C3.27008 6.21049 3.27008 5.78943 3.52977 5.52973Z' fill='%23FFFFFFBF'/%3E%3C/svg%3E%0A");
+    --icon-chevron-down: url("data:image/svg+xml,%3Csvg width='16' height='16' viewBox='0 0 16 16' fill='%23DEDEDE' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath clip-rule='evenodd' d='M3.52977 5.52973C3.78947 5.27004 4.21053 5.27004 4.47023 5.52973L8 9.05951L11.5298 5.52973C11.7895 5.27004 12.2105 5.27004 12.4702 5.52973C12.7299 5.78943 12.7299 6.21049 12.4702 6.47019L8.47023 10.4702C8.21053 10.7299 7.78947 10.7299 7.52977 10.4702L3.52977 6.47019C3.27008 6.21049 3.27008 5.78943 3.52977 5.52973Z'/%3E%3C/svg%3E");
 
     /* Button colors on modals and message editing. */
     --color-exit-button-text: hsl(0deg 0% 100%);

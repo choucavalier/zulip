@@ -405,6 +405,11 @@ export function enable_or_disable_permission_settings_in_edit_panel(
     if (!stream_data.user_can_set_topics_policy(sub)) {
         $stream_settings.find("#id_topics_policy").prop("disabled", true);
     }
+
+    if (!stream_data.user_can_set_delete_message_policy()) {
+        settings_components.disable_group_permission_setting($("#id_can_delete_any_message_group"));
+        settings_components.disable_group_permission_setting($("#id_can_delete_own_message_group"));
+    }
 }
 
 export function update_announce_stream_option(): void {
@@ -618,6 +623,24 @@ export function update_stream_privacy_choices(policy: string): void {
 
 export function update_channel_folder_dropdown(sub: StreamSubscription): void {
     if (!hash_parser.is_editing_stream(sub.stream_id)) {
+        return;
+    }
+
+    settings_components.set_channel_folder_dropdown_value(sub);
+}
+
+export function update_channel_folder_name(folder_id: number): void {
+    if (!overlays.streams_open()) {
+        return;
+    }
+
+    const active_stream_id = stream_settings_components.get_active_data().id;
+    if (!active_stream_id) {
+        return;
+    }
+
+    const sub = sub_store.get(active_stream_id)!;
+    if (sub.folder_id !== folder_id) {
         return;
     }
 

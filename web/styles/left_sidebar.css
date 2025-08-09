@@ -102,20 +102,6 @@
     }
 }
 
-#left-sidebar-navigation-list .selected-home-view:hover,
-.selected-home-view.top-left-active-filter {
-    &.hide-unread-messages-count {
-        .masked_unread_count {
-            visibility: hidden;
-            position: absolute;
-        }
-
-        .unread_count {
-            visibility: visible;
-        }
-    }
-}
-
 #stream_filters {
     overflow: visible;
     margin-bottom: 5px;
@@ -357,9 +343,13 @@
     cursor: pointer;
     background-color: var(--color-background);
     position: sticky;
-    /* Input is 31px tall at 16px/1em.
-       Input container has 8px and 3px top/bottom padding = 11px total padding */
-    top: calc(1.9375em + 11px);
+    /* Input is 54px tall at 16px/1em. That includes the
+       input container's top padding that's 2.5 times
+       the value of the left sidebar vertical gutter,
+       plus 3px of bottom padding. */
+    top: calc(
+        1.9375em + (var(--left-sidebar-sections-vertical-gutter) * 2.5) + 3px
+    );
     /* Must be more than .sidebar-topic-check and less than #stream-search-and-add */
     z-index: 2;
     color: var(--color-text-default);
@@ -809,7 +799,7 @@ ul.filters {
 
     .has-only-muted-mentions {
         .unread_mention_info {
-            opacity: var(--opacity-left-sidebar-muted);
+            opacity: var(--opacity-left-sidebar-muted-mentions);
         }
 
         &:hover .unread_mention_info {
@@ -858,6 +848,12 @@ ul.filters {
         .masked_unread_count,
         .sidebar-menu-icon {
             opacity: var(--opacity-left-sidebar-muted);
+        }
+
+        .unread_mention_info {
+            /* Default opacity for this icon is too close to
+               --opacity-left-sidebar-muted */
+            opacity: var(--opacity-left-sidebar-muted-mentions);
         }
 
         &:hover {
@@ -916,7 +912,23 @@ li.active-sub-filter {
     }
 }
 
-#stream_filters .narrow-filter.active-filter {
+.top_left_mentions {
+    /* To highlight the background when a new unread arrives,
+       we set the background on the .new-unread class. */
+    &.new-unread {
+        background-color: var(--color-background-active-narrow-filter);
+    }
+    /* The background-color transition is maintained by this class,
+       which ensures an immediate opening transition, and lingers
+       some time longer beyond the CSS Animation on the unread count,
+       ensuring a smooth transition back to the normal background
+       color on the sidebar row that's been targeted. */
+    &.new-unread-highlight {
+        transition: background-color 1s ease-in-out;
+    }
+}
+
+.top_left_mentions #stream_filters .narrow-filter.active-filter {
     .topic-list .filter-topics,
     > .bottom_left_row {
         background-color: var(--color-background-active-narrow-filter);
@@ -933,50 +945,103 @@ li.active-sub-filter {
     justify-content: center;
 
     .left-sidebar-navigation-condensed-item {
-        /* 24px minimum width from Vlad's design.
-           however, we want to permit growing and
-           shrinking to keep icons reasonably spaced
-           across different information-density
-           settings. */
-        flex: 1 1 24px;
+        /* 26px minimum width gives a bit more
+           breathing room for unread markers when
+           unreads are displayed.
+           However, we want to permit growing but
+           not shrinking to keep icons reasonably
+           spaced across different information-density
+           settings. So we convert this value to ems:
+           26px at 16px/1em. */
+        flex: 1 0 1.625em;
         /* Unset padding from individual top_left items */
         padding: 0;
         border-radius: 4px;
         /* Set a positioning context for the unread dot. */
         position: relative;
 
-        .unread_count {
-            position: absolute;
-        }
-
-        /* Show the same styles when each item is
-           hovered or, via the keyboard, the `<a>`
-           element within receives focus. */
-        &:hover,
-        &:focus-within {
-            background: var(--color-background-navigation-item-hover);
-
+        &:not(.top_left_condensed_unread_marker) {
             .unread_count {
-                /* 6px at 12px/1em */
-                top: -0.5em;
-                right: -0.5em;
-                background: var(--color-background-unread-counter-no-alpha);
+                position: absolute;
+            }
+
+            /* Show the same styles when each item is
+               hovered or, via the keyboard, the `<a>`
+               element within receives focus. */
+            &:hover,
+            &:focus-within {
+                background: var(--color-background-navigation-item-hover);
+
+                .unread_count {
+                    /* 6px at 12px/1em */
+                    top: -0.5em;
+                    right: -0.5em;
+                    background: var(--color-background-unread-counter-no-alpha);
+                }
+            }
+
+            &:not(:hover) .unread_count {
+                /* .unread_count has its based font-size set to 12px at 14px/em. */
+                /* 2px, 6px at 12px/1em */
+                top: 0.1667em;
+                /* With positioning, we center the dot over the icon
+                   by subtracting half its width from the 50% mark. */
+                right: calc(50% - 0.25em);
+                /* But then we shift it left the em equivalent of half
+                   the icon width (15px/2) plus 2px. This keeps the
+                   unread dot in correct proximity to the view icon,
+                   no matter how the row flexes or what information-
+                   density values a user has set. 9.5px at 12px/1em. */
+                transform: translateX(0.7917em);
+                width: 0.5em;
+                height: 0.5em;
+                padding: 0;
+                color: transparent;
+                background-color: var(--color-background-unread-counter-dot);
             }
         }
 
-        &:not(:hover) .unread_count {
-            /* .unread_count has its based font-size set to 12px at 14px/em. */
-            /* 2px, 6px at 12px/1em */
-            top: 0.1667em;
-            right: 0.1667em;
-            width: 0.5em;
-            height: 0.5em;
-            padding: 0;
-            color: transparent;
-            background-color: var(--color-background-unread-counter-dot);
+        /* Hide the unread dot, assuming that message
+           counts are not hidden. */
+        &.selected-home-view .unread_count {
+            display: none;
         }
 
         &.top_left_starred_messages .unread_count {
+            display: none;
+        }
+
+        &.top_left_condensed_unread_marker {
+            /* Flex to just the unread's width, to keep the
+               unreads aligned on the righthand side with others
+               up and down the left sidebar. */
+            flex: 0 0 auto;
+            display: flex;
+            align-content: center;
+
+            &:has(.unread_count:empty) {
+                /* When the unread count is empty (no unreads),
+                   we flex shut to 0 across the board so the
+                   unread count takes up no space. */
+                flex: 0 0 0;
+            }
+
+            .unread_count:not(:empty) {
+                margin: 0 var(--left-sidebar-unread-offset);
+                align-self: center;
+            }
+        }
+    }
+
+    &.hide-unread-messages-count {
+        /* Restore the unread dot when message counts
+           are hidden. */
+        .selected-home-view .unread_count {
+            display: block;
+        }
+        /* We suppress the entire unread area
+           for users who prefer masked unreads. */
+        .top_left_condensed_unread_marker {
             display: none;
         }
     }
@@ -1288,14 +1353,6 @@ li.top_left_scheduled_messages {
             white-space: nowrap;
             overflow: hidden;
         }
-
-        /* We only establish the ellipsis when
-           the input is not focused, thanks to a
-           Safari bug that makes long inputs
-           unreachable and unscrollable. */
-        .input:not(:focus) {
-            text-overflow: ellipsis;
-        }
     }
 }
 
@@ -1357,6 +1414,18 @@ li.top_left_scheduled_messages {
                 height: var(--line-height-sidebar-row);
             }
         }
+
+        /* When unread counts display in the condensed-view
+           row for users who do not prefer to mask their unread
+           counts, we suppress the count on the highlighted
+           home-view row. */
+        &:not(:has(.hide-unread-messages-count)) {
+            + #left-sidebar-navigation-list {
+                .selected-home-view .unread_count {
+                    display: none;
+                }
+            }
+        }
     }
 
     /* Remove the cursor: pointer property of Views label for the spectators. */
@@ -1395,7 +1464,10 @@ li.top_left_scheduled_messages {
         display: flex;
         align-items: center;
         justify-content: center;
-        margin-right: 2px;
+        /* These margin and padding values should be
+           coordinated with those on .sidebar-menu-icon. */
+        margin: 2px 2px 2px 1px;
+        padding-left: 1px;
         border-radius: 3px;
         color: var(--color-vdots-visible);
 
@@ -1729,6 +1801,9 @@ li.top_left_scheduled_messages {
        centering regime for the row. */
     align-self: stretch;
     border-radius: 3px;
+    /* These margin and padding values should be
+       coordinated with those on
+       .left-sidebar-navigation-menu-icon. */
     margin: 2px 2px 2px 1px;
     /* This helps horizontally align the vdots,
        given the reduced margin-left above. */

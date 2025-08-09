@@ -6,7 +6,7 @@ import Icons from "unplugin-icons/vite";
 
 // https://astro.build/config
 export default defineConfig({
-    base: "help-beta",
+    base: "starlight_help",
     vite: {
         plugins: [
             // eslint-disable-next-line new-cap
@@ -76,7 +76,7 @@ export default defineConfig({
             },
             pagination: false,
             routeMiddleware: "./src/route_data.ts",
-            customCss: ["./src/styles/main.css", "./src/styles/steps.css"],
+            customCss: ["./src/styles/main.css"],
             sidebar: [
                 {
                     label: "Zulip homepage",
@@ -273,6 +273,7 @@ export default defineConfig({
                         "create-a-channel",
                         "pin-a-channel",
                         "change-the-color-of-a-channel",
+                        "channel-folders",
                         "unsubscribe-from-a-channel",
                         "manage-inactive-channels",
                         "move-content-to-another-channel",
@@ -384,7 +385,7 @@ export default defineConfig({
                         },
                         "public-access-option",
                         "general-chat-channels",
-                        "channel-folders",
+                        "manage-channel-folders",
                         "channel-permissions",
                         "channel-posting-policy",
                         "configure-who-can-administer-a-channel",

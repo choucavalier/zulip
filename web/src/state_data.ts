@@ -158,6 +158,13 @@ export const channel_folder_schema = z.object({
     creator_id: z.nullable(z.number()),
     date_created: z.number(),
     is_archived: z.boolean(),
+    order: z.number(),
+});
+
+export const navigation_view_schema = z.object({
+    fragment: z.string(),
+    name: z.string(),
+    is_pinned: z.boolean(),
 });
 
 export const user_topic_schema = z.object({
@@ -293,6 +300,7 @@ export const realm_schema = z.object({
     max_icon_file_size_mib: z.number(),
     max_logo_file_size_mib: z.number(),
     max_message_length: z.number(),
+    max_reminder_note_length: z.number(),
     max_stream_description_length: z.number(),
     max_stream_name_length: z.number(),
     max_topic_length: z.number(),
@@ -438,6 +446,7 @@ export const realm_schema = z.object({
     realm_video_chat_provider: z.number(),
     realm_waiting_period_threshold: z.number(),
     realm_want_advertise_in_communities_directory: z.boolean(),
+    realm_welcome_message_custom_text: z.string(),
     realm_zulip_update_announcements_stream_id: z.number(),
     server_avatar_changes_disabled: z.boolean(),
     server_can_summarize_topics: z.boolean(),
@@ -537,6 +546,7 @@ export const split_state_data_schema = z.object({
     }),
     current_user: current_user_schema,
     realm: realm_schema,
+    navigation_views: z.object({navigation_views: z.array(navigation_view_schema)}),
 });
 type SplitStateDataInput = z.input<typeof split_state_data_schema>;
 

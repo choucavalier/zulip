@@ -201,6 +201,12 @@ def update_realm(
     zulip_update_announcements_stream_id: Json[int] | None = None,
     # Note: push_notifications_enabled and push_notifications_enabled_end_timestamp
     # are not offered here as it is maintained by the server, not via the API.
+    welcome_message_custom_text: Annotated[
+        str | None,
+        StringConstraints(
+            max_length=Realm.MAX_REALM_WELCOME_MESSAGE_CUSTOM_TEXT_LENGTH,
+        ),
+    ] = None,
 ) -> HttpResponse:
     # Realm object is being refetched here to make sure that we
     # do not use stale object from cache which can happen when a
@@ -724,6 +730,7 @@ def update_realm_user_settings_defaults(
     web_escape_navigates_to_home_view: Json[bool] | None = None,
     web_font_size_px: Json[int] | None = None,
     web_home_view: Literal["recent_topics", "inbox", "all_messages"] | None = None,
+    web_left_sidebar_show_channel_folders: Json[bool] | None = None,
     web_left_sidebar_unreads_count_summary: Json[bool] | None = None,
     web_line_height_percent: Json[int] | None = None,
     web_mark_read_on_scroll_policy: Json[

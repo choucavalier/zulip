@@ -51,6 +51,7 @@ const realm_playground = mock_esm("../src/realm_playground");
 const reload = mock_esm("../src/reload");
 const message_reminder = mock_esm("../src/message_reminder");
 const reminders_overlay_ui = mock_esm("../src/reminders_overlay_ui");
+const navigation_views = mock_esm("../src/navigation_views");
 const saved_snippets = mock_esm("../src/saved_snippets");
 const saved_snippets_ui = mock_esm("../src/saved_snippets_ui");
 const scheduled_messages = mock_esm("../src/scheduled_messages");
@@ -193,6 +194,37 @@ run_test("alert_words", ({override}) => {
     assert.deepEqual(alert_words.get_word_list(), [{word: "lunch"}, {word: "fire"}]);
     assert.ok(alert_words.has_alert_word("fire"));
     assert.ok(alert_words.has_alert_word("lunch"));
+});
+
+run_test("navigation_views", ({override}) => {
+    const add_event = event_fixtures.navigation_view__add;
+    {
+        const stub = make_stub();
+        override(navigation_views, "add_navigation_view", stub.f);
+
+        dispatch(add_event);
+        assert.equal(stub.num_calls, 1);
+        assert_same(stub.get_args("event").event, add_event.navigation_view);
+    }
+    const update_event = event_fixtures.navigation_view__update;
+    {
+        const stub = make_stub();
+        override(navigation_views, "update_navigation_view", stub.f);
+
+        dispatch(update_event);
+        assert.equal(stub.num_calls, 1);
+        assert_same(stub.get_args("event").event, update_event.fragment);
+    }
+
+    const remove_event = event_fixtures.navigation_view__remove;
+    {
+        const stub = make_stub();
+        override(navigation_views, "remove_navigation_view", stub.f);
+
+        dispatch(remove_event);
+        assert.equal(stub.num_calls, 1);
+        assert_same(stub.get_args("event").event, remove_event.fragment);
+    }
 });
 
 run_test("saved_snippets", ({override}) => {
@@ -533,10 +565,11 @@ run_test("channel_folders", ({override}) => {
         const stub = make_stub();
         override(stream_ui_updates, "update_channel_folder_name", stub.f);
         override(stream_list, "update_streams_sidebar", stub.f);
+        override(stream_settings_ui, "reset_dropdown_set_to_archived_folder", stub.f);
 
         dispatch(event);
 
-        assert.equal(stub.num_calls, 2);
+        assert.equal(stub.num_calls, 3);
         const folders = channel_folders.get_channel_folders(true);
         const args = stub.get_args("folder_id");
         assert_same(args.folder_id, event.channel_folder_id);
@@ -545,7 +578,10 @@ run_test("channel_folders", ({override}) => {
         assert.equal(folders[0].id, event.channel_folder_id);
         assert.equal(folders[0].name, event.data.name);
         assert.equal(folders[0].description, event.data.description);
-        assert.equal(folders[0].rendered_description, event.data.rendered_description);
+        assert.equal(
+            folders[0].rendered_description,
+            event.data.rendered_description.replace("<p>", "").replace("</p>", ""),
+        );
         assert.equal(folders[0].is_archived, event.data.is_archived);
     }
 
@@ -1248,6 +1284,12 @@ run_test("user_settings", ({override}) => {
     override(user_settings, "starred_message_counts", false);
     dispatch(event);
     assert_same(user_settings.starred_message_counts, true);
+
+    event = event_fixtures.user_settings__web_left_sidebar_show_channel_folders;
+    override(stream_list, "build_stream_list", noop);
+    override(user_settings, "web_left_sidebar_show_channel_folders", true);
+    dispatch(event);
+    assert_same(user_settings.web_left_sidebar_show_channel_folders, false);
 
     event = event_fixtures.user_settings__web_left_sidebar_unreads_count_summary;
     override(sidebar_ui, "update_unread_counts_visibility", noop);

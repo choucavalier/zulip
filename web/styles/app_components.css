@@ -547,8 +547,31 @@ input.settings_text_input {
     }
 }
 
+.create-group-button-container {
+    .upgrade-organization-banner-container {
+        display: flex;
+        justify-content: center;
+    }
+}
+
+.organization-upgrade-banner,
+.mobile-push-notifications-banner,
+.admin-permissions-banner,
 .desktop-setting-notifications {
     margin-bottom: 10px;
+    width: fit-content;
+}
+
+.mobile-push-notifications-banner,
+.desktop-setting-notifications,
+.organization-upgrade-banner {
+    .banner-content {
+        flex-wrap: nowrap;
+
+        .banner-action-buttons {
+            flex-wrap: nowrap;
+        }
+    }
 }
 
 .invite-stream-notice {
@@ -619,7 +642,7 @@ input.settings_text_input {
 .unread_mention_info:not(:empty) {
     margin-right: 5px;
     margin-left: 2px;
-    opacity: 0.5;
+    opacity: var(--opacity-unread-mention-info);
 }
 
 /* Implement the web app's default-hidden convention for alert
@@ -1324,19 +1347,22 @@ input.settings_text_input {
     color: hsl(1.06deg 44.66% 50.39%);
 }
 
-.sticky-bottom-option {
+.sticky-bottom-option-button {
     width: 100%;
     display: flex;
+    padding: 7px 14px;
+    background-color: var(--color-background-zulip-button);
     justify-content: flex-start;
     color: var(--color-dropdown-item);
     border: none;
     border-top: 1px solid var(--color-border-zulip-button);
-    border-top-left-radius: 0 !important;
-    border-top-right-radius: 0 !important;
+    border-bottom-left-radius: 4px;
+    border-bottom-right-radius: 4px;
 
     &:hover {
         color: var(--color-dropdown-item);
         background-color: var(--background-color-active-dropdown-item);
+        border-color: var(--color-border-zulip-button-interactive);
     }
 
     &:focus,

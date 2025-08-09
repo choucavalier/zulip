@@ -477,6 +477,18 @@ def resend_email_invitation(client: Client) -> None:
     validate_against_openapi_schema(result, "/invites/{invite_id}/resend", "post", "200")
 
 
+@openapi_test_function("/realm/test_welcome_bot_custom_message:post")
+def test_welcome_bot_custom_message(client: Client) -> None:
+    # {code_example|start}
+    # Send a test welcome bot custom message with the provided text.
+    request = {"welcome_message_custom_text": "Custom Welcome Message Text"}
+    result = client.call_endpoint(
+        "/realm/test_welcome_bot_custom_message", method="POST", request=request
+    )
+    # {code_example|end}
+    validate_against_openapi_schema(result, "/realm/test_welcome_bot_custom_message", "post", "200")
+
+
 @openapi_test_function("/users/{user_id}:get")
 def get_single_user(client: Client) -> None:
     user_id = 8
@@ -1892,6 +1904,20 @@ def update_user_group_members(client: Client, user_group_id: int) -> None:
     validate_against_openapi_schema(result, "/user_groups/{group_id}/members", "post", "200")
 
 
+@openapi_test_function("/channels/create:post")
+def add_channel(client: Client) -> None:
+    # {code_example|start}
+    request = {
+        "name": "music_group",
+        "description": "Channel for discussing and learning about music.",
+        "subscribers": [],
+    }
+    result = client.call_endpoint(url="channels/create", method="POST", request=request)
+    # {code_example|end}
+    assert_success_response(result)
+    validate_against_openapi_schema(result, "/channels/create", "post", "200")
+
+
 def test_invalid_api_key(client_with_invalid_key: Client) -> None:
     result = client_with_invalid_key.get_subscriptions()
     assert_error_response(result, code="UNAUTHORIZED")
@@ -2008,6 +2034,7 @@ def test_users(client: Client, owner_client: Client) -> None:
 
 def test_streams(client: Client, nonadmin_client: Client) -> None:
     add_subscriptions(client)
+    add_channel(client)
     test_add_subscriptions_already_subscribed(client)
     get_subscriptions(client)
     stream_id = get_stream_id(client)
@@ -2086,6 +2113,7 @@ def test_the_api(client: Client, nonadmin_client: Client, owner_client: Client) 
     test_server_organizations(client)
     test_errors(client)
     test_invitations(client)
+    test_welcome_bot_custom_message(client)
 
     sys.stdout.flush()
     if REGISTERED_TEST_FUNCTIONS != CALLED_TEST_FUNCTIONS:

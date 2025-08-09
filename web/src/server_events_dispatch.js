@@ -36,6 +36,7 @@ import * as message_view from "./message_view.ts";
 import * as muted_users_ui from "./muted_users_ui.ts";
 import * as narrow_title from "./narrow_title.ts";
 import * as navbar_alerts from "./navbar_alerts.ts";
+import * as navigation_views from "./navigation_views.ts";
 import * as onboarding_steps from "./onboarding_steps.ts";
 import * as overlays from "./overlays.ts";
 import * as peer_data from "./peer_data.ts";
@@ -62,6 +63,7 @@ import * as settings_components from "./settings_components.ts";
 import * as settings_config from "./settings_config.ts";
 import * as settings_emoji from "./settings_emoji.ts";
 import * as settings_exports from "./settings_exports.ts";
+import * as settings_folders from "./settings_folders.ts";
 import * as settings_invites from "./settings_invites.ts";
 import * as settings_linkifiers from "./settings_linkifiers.ts";
 import * as settings_notifications from "./settings_notifications.ts";
@@ -121,6 +123,7 @@ export function dispatch_normal_event(event) {
                 case "add": {
                     channel_folders.add(event.channel_folder);
                     inbox_ui.complete_rerender();
+                    settings_folders.populate_channel_folders();
                     break;
                 }
                 case "update":
@@ -130,6 +133,13 @@ export function dispatch_normal_event(event) {
                         stream_list.update_streams_sidebar();
                         stream_ui_updates.update_channel_folder_name(event.channel_folder_id);
                     }
+
+                    if (event.data.is_archived !== undefined) {
+                        stream_settings_ui.reset_dropdown_set_to_archived_folder(
+                            event.channel_folder_id,
+                        );
+                    }
+                    settings_folders.update_folder_row(event);
                     break;
                 default:
                     blueslip.error("Unexpected event type channel_folder/" + event.op);
@@ -195,6 +205,20 @@ export function dispatch_normal_event(event) {
 
         case "muted_users":
             muted_users_ui.handle_user_updates(event.muted_users);
+            break;
+
+        case "navigation_view":
+            switch (event.op) {
+                case "add":
+                    navigation_views.add_navigation_view(event.navigation_view);
+                    break;
+                case "update":
+                    navigation_views.update_navigation_view(event.fragment, event.data);
+                    break;
+                case "remove":
+                    navigation_views.remove_navigation_view(event.fragment);
+                    break;
+            }
             break;
 
         case "presence":
@@ -300,6 +324,7 @@ export function dispatch_normal_event(event) {
                 giphy_rating: giphy.update_giphy_rating,
                 waiting_period_threshold: noop,
                 want_advertise_in_communities_directory: noop,
+                welcome_message_custom_text: noop,
                 enable_read_receipts: settings_account.update_send_read_receipts_tooltip,
                 enable_guest_user_dm_warning: compose_validate.warn_if_guest_in_dm_recipient,
                 enable_guest_user_indicator: noop,
@@ -905,6 +930,7 @@ export function dispatch_normal_event(event) {
                 "web_stream_unreads_count_display_policy",
                 "web_suggest_update_timezone",
                 "web_left_sidebar_unreads_count_summary",
+                "web_left_sidebar_show_channel_folders",
             ];
 
             const original_home_view = user_settings.web_home_view;
@@ -991,6 +1017,9 @@ export function dispatch_normal_event(event) {
             }
             if (event.property === "web_left_sidebar_unreads_count_summary") {
                 sidebar_ui.update_unread_counts_visibility();
+            }
+            if (event.property === "web_left_sidebar_show_channel_folders") {
+                stream_list.build_stream_list(true);
             }
             if (
                 event.property === "receives_typing_notifications" &&

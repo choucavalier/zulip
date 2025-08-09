@@ -48,6 +48,7 @@ from zerver.views.auth import (
 from zerver.views.channel_folders import (
     create_channel_folder,
     get_channel_folders,
+    reorder_realm_channel_folders,
     update_channel_folder,
 )
 from zerver.views.compatibility import check_global_compatibility
@@ -187,6 +188,7 @@ from zerver.views.storage import get_storage, remove_storage, update_storage
 from zerver.views.streams import (
     add_default_stream,
     add_subscriptions_backend,
+    create_channel,
     create_default_stream_group,
     deactivate_stream_backend,
     delete_in_topic,
@@ -269,6 +271,7 @@ from zerver.views.video_calls import (
     make_zoom_video_call,
     register_zoom_user,
 )
+from zerver.views.welcome_bot_custom_message import send_test_welcome_bot_custom_message
 from zerver.views.zephyr import webathena_kerberos_login
 from zproject import dev_urls
 
@@ -336,6 +339,8 @@ v1_api_and_json_patterns = [
     ),
     # realm/deactivate -> zerver.views.deactivate_realm
     rest_path("realm/deactivate", POST=deactivate_realm),
+    # realm/test_welcome_bot_custom_message -> zerver.views.welcome_bot_custom_message
+    rest_path("realm/test_welcome_bot_custom_message", POST=send_test_welcome_bot_custom_message),
     # users -> zerver.views.users
     rest_path(
         "users", GET=(get_members_backend, {"allow_anonymous_user_web"}), POST=create_user_backend
@@ -527,6 +532,7 @@ v1_api_and_json_patterns = [
     # streams -> zerver.views.streams
     # (this API is only used externally)
     rest_path("streams", GET=get_streams_backend),
+    rest_path("channels/create", POST=create_channel),
     # GET returns `stream_id`, stream name should be encoded in the URL query (in `stream` param)
     rest_path("get_stream_id", GET=json_get_stream_id),
     # GET returns "stream info" (undefined currently?), HEAD returns whether stream exists (200 or 404)
@@ -559,7 +565,7 @@ v1_api_and_json_patterns = [
         DELETE=remove_subscriptions_backend,
     ),
     rest_path("channel_folders/create", POST=create_channel_folder),
-    rest_path("channel_folders", GET=get_channel_folders),
+    rest_path("channel_folders", GET=get_channel_folders, PATCH=reorder_realm_channel_folders),
     rest_path("channel_folders/<int:channel_folder_id>", PATCH=update_channel_folder),
     # topic-muting -> zerver.views.user_topics
     # (deprecated and will be removed once clients are migrated to use '/user_topics')
@@ -698,7 +704,7 @@ i18n_urls = [
     # Realm creation
     path("json/antispam_challenge", get_challenge),
     path("new/", create_realm),
-    path("new/<creation_key>", create_realm, name="create_realm"),
+    path("new/<confirmation_key>", create_realm, name="create_realm"),
     # Realm reactivation
     path("reactivate/", realm_reactivation, name="realm_reactivation"),
     path("reactivate/<confirmation_key>", realm_reactivation_get, name="realm_reactivation_get"),
@@ -866,10 +872,6 @@ urls += [
     # the django-scim2 code for them.
     re_path(
         r"^scim/v2/Groups/.search$",
-        scim_views.SCIMView.as_view(implemented=False),
-    ),
-    re_path(
-        r"^scim/v2/Groups(?:/(?P<uuid>[^/]+))?$",
         scim_views.SCIMView.as_view(implemented=False),
     ),
     re_path(r"^scim/v2/Me$", scim_views.SCIMView.as_view(implemented=False)),

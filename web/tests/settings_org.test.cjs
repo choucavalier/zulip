@@ -16,6 +16,7 @@ mock_esm("../src/loading", {
     make_indicator: noop,
     destroy_indicator: noop,
 });
+mock_esm("../src/settings_banner", {set_up_upgrade_banners: noop});
 mock_esm("../src/buttons", {
     show_button_loading_indicator: noop,
     hide_button_loading_indicator: noop,
@@ -566,6 +567,10 @@ test("set_up", ({override, override_rewire}) => {
     $("#id_realm_waiting_period_threshold").set_parent($waiting_period_parent_elem);
     $("#id_realm_can_create_web_public_channel_group").set_parent(
         $.create("<stub-can-create-web-public-channel-group-parent>"),
+    );
+    override(realm, "realm_welcome_message_custom_text", "");
+    $("#id_realm_welcome_message_custom_text").set_parent(
+        $.create("<stub welcome message custom text>"),
     );
 
     // Make our plan not limited so we don't have to stub all the

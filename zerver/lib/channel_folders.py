@@ -15,6 +15,7 @@ class ChannelFolderDict(TypedDict):
     name: str
     description: str
     rendered_description: str
+    order: int
     creator_id: int | None
     date_created: int
     is_archived: bool
@@ -32,7 +33,7 @@ def check_channel_folder_name(name: str, realm: Realm) -> None:
             )
         )
 
-    if ChannelFolder.objects.filter(name__iexact=name, realm=realm).exists():
+    if ChannelFolder.objects.filter(name__iexact=name, realm=realm, is_archived=False).exists():
         raise JsonableError(_("Channel folder name already in use"))
 
 
@@ -49,6 +50,7 @@ def get_channel_folder_dict(channel_folder: ChannelFolder) -> ChannelFolderDict:
         name=channel_folder.name,
         description=channel_folder.description,
         rendered_description=channel_folder.rendered_description,
+        order=channel_folder.order,
         date_created=date_created,
         creator_id=channel_folder.creator_id,
         is_archived=channel_folder.is_archived,
@@ -63,7 +65,7 @@ def get_channel_folders_in_realm(
         folders = folders.exclude(is_archived=True)
 
     channel_folders = [get_channel_folder_dict(channel_folder) for channel_folder in folders]
-    return sorted(channel_folders, key=lambda folder: folder["id"])
+    return sorted(channel_folders, key=lambda folder: folder["order"])
 
 
 def get_channel_folder_by_id(channel_folder_id: int, realm: Realm) -> ChannelFolder:

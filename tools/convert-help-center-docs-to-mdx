@@ -3,6 +3,7 @@
 import os
 import re
 import shutil
+import subprocess
 import sys
 from textwrap import indent
 from typing import TypedDict
@@ -67,7 +68,7 @@ def replace_setting_links(
             f'import NavigationSteps from "{import_relative_base_path}/NavigationSteps.astro"'
         )
         setting_identifier = match.group("setting_identifier")
-        return f'<NavigationSteps identifier="settings/{setting_identifier}" />'
+        return f'<NavigationSteps target="settings/{setting_identifier}" />'
 
     return setting_links_pattern.sub(replace_setting_links_match, markdown_string)
 
@@ -81,7 +82,7 @@ def replace_relative_links(
         )
         link_type = match.group("link_type")
         key = match.group("key")
-        return f'<NavigationSteps identifier="relative/{link_type}/{key}" />'
+        return f'<NavigationSteps target="relative/{link_type}/{key}" />'
 
     return RELATIVE_LINKS_PATTERN.sub(replace_relative_links_match, markdown_string)
 
@@ -90,15 +91,15 @@ def replace_image_path(markdown_string: str, replacement_path: str) -> str:
     """
     We will point to the existing image folder till
     the cutover. After that, we will copy the images
-    to src folder for help-beta in order to take
+    to src folder for starlight_help in order to take
     advantage of Astro's image optimization.
     See https://chat.zulip.org/#narrow/stream/6-frontend/topic/Handling.20images.20in.20help.20center.20starlight.20migration.2E/near/1915130
     """
     # We do not replace /static/images directly since there are a few
     # instances in the documentation where zulip.com links are
     # referenced with that blurb as a part of the url.
-    result = markdown_string.replace("(/static/images/help-beta", f"({replacement_path}")
-    return result.replace('="/static/images/help-beta', f'="{replacement_path}')
+    result = markdown_string.replace("(/static/images/starlight_help", f"({replacement_path}")
+    return result.replace('="/static/images/starlight_help', f'="{replacement_path}')
 
 
 def fix_file_imports(
@@ -137,11 +138,11 @@ def escape_curly_braces(markdown_string: str) -> str:
 
 def fix_relative_path(markdown_string: str) -> str:
     """
-    Since the docs will live at the `help-beta/` url
+    Since the docs will live at the `starlight_help/` url
     until we migrate the project completely, we will
-    replace `help/` with `help-beta/`
+    replace `help/` with `starlight_help/`
     """
-    return markdown_string.replace("help/", "help-beta/")
+    return markdown_string.replace("help/", "starlight_help/")
 
 
 def insert_string_at_line(text: str, destination_str: str, n: int) -> str:
@@ -154,11 +155,10 @@ def insert_string_at_line(text: str, destination_str: str, n: int) -> str:
 def replace_icon_with_unplugin_component(
     match: re.Match[str],
     icon_package_name: str,
-    icon_component_prefix: str,
     import_statement_set: set[str],
 ) -> str:
     icon_name = match.group(1)
-    component_name = icon_component_prefix + to_pascal(icon_name).replace("-", "")
+    component_name = to_pascal(icon_name).replace("-", "") + "Icon"
     import_statement = f'import {component_name} from "~icons/{icon_package_name}/{icon_name}"'
     import_statement_set.add(import_statement)
     return f"<{component_name} />"
@@ -174,7 +174,7 @@ def replace_icons(markdown_string: str, import_statement_set: set[str]) -> str:
     )
 
     def replace_font_awesome_icon_with_unplugin_component(match: re.Match[str]) -> str:
-        return replace_icon_with_unplugin_component(match, "fa", "Fa", import_statement_set)
+        return replace_icon_with_unplugin_component(match, "fa", import_statement_set)
 
     result = re.sub(
         font_awesome_pattern, replace_font_awesome_icon_with_unplugin_component, markdown_string
@@ -185,9 +185,7 @@ def replace_icons(markdown_string: str, import_statement_set: set[str]) -> str:
     )
 
     def replace_zulip_icon_with_unplugin_component(match: re.Match[str]) -> str:
-        return replace_icon_with_unplugin_component(
-            match, "zulip-icon", "ZulipIcons", import_statement_set
-        )
+        return replace_icon_with_unplugin_component(match, "zulip-icon", import_statement_set)
 
     result = re.sub(zulip_icon_pattern, replace_zulip_icon_with_unplugin_component, result)
 
@@ -311,12 +309,12 @@ def insert_flattened_steps_component(
     components_dir_path: str,
 ) -> str:
     """
-    We insert FlattenList components where include files
+    We insert FlattenedSteps components where include files
     are being treated as part of ordered lists. Astro renders
     included files as it's own component, which would result in
     multiple ordered lists instead of a single list if we did
     not use this component. See the astro component file itself
-    to know more how FlattenList works.
+    to know more how FlattenedSteps works.
     """
     file_include_pattern = re.compile(r"^ {,3}\{!([^!]+)!\} *$", re.MULTILINE)
     lines = markdown_string.splitlines()
@@ -345,7 +343,7 @@ def insert_flattened_steps_component(
     # If a file with `is_only_ordered_list` set to True is followed
     # immediately by a similar file with it set to true, our loop
     # will try to insert the same text at the same position twice
-    # resulting in two opening <FlattenList> one after the other.
+    # resulting in two opening <FlattenedSteps> one after the other.
     # Using a set avoids this problem.
     insertions = set()
 
@@ -353,10 +351,10 @@ def insert_flattened_steps_component(
         match_line_index = markdown_string[: match.start()].count("\n")
 
         upper_bound = traverse_to_boundary(match_line_index - 1, step=-1)
-        insertions.add((upper_bound + 1, "<FlattenList>"))
+        insertions.add((upper_bound + 1, "<FlattenedSteps>"))
 
         lower_bound = traverse_to_boundary(match_line_index + 1, step=1)
-        insertions.add((lower_bound, "</FlattenList>"))
+        insertions.add((lower_bound, "</FlattenedSteps>"))
 
     for match in SETTINGS_LINK_PATTERN.finditer(markdown_string):
         insert_flatten_list(match)
@@ -372,13 +370,81 @@ def insert_flattened_steps_component(
 
     if insertions:
         import_statement_set.add(
-            f"import FlattenList from '{components_dir_path}/FlattenList.astro';"
+            f"import FlattenedSteps from '{components_dir_path}/FlattenedSteps.astro';"
         )
         # Insert tags in reverse order to avoid index shifting
         for index, tag in sorted(insertions, reverse=True):
             lines.insert(index, tag)
 
     return "\n".join(lines)
+
+
+def remove_blank_lines_from_steps(markdown_string: str) -> str:
+    lines = markdown_string.split("\n")
+    output_lines = []
+    inside_flattened_steps = False
+    inside_steps = False
+
+    for line in lines:
+        if "<FlattenedSteps>" in line:
+            inside_flattened_steps = True
+        elif "</FlattenedSteps>" in line:
+            inside_flattened_steps = False
+        if "<Steps>" in line:
+            inside_steps = True
+        elif "</Steps>" in line:
+            inside_steps = False
+
+        if (inside_flattened_steps or inside_steps) and line.strip() == "":
+            continue
+
+        output_lines.append(line)
+
+    return "\n".join(output_lines)
+
+
+def insert_steps_component_for_ordered_lists(
+    markdown_string: str, import_statements: set[str]
+) -> str:
+    list_item_pattern = re.compile(r"^\s*1\.\s+")
+
+    lines = markdown_string.split("\n")
+    output_lines = []
+    inside_flattened_steps = False
+
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+
+        if "<FlattenedSteps>" in line:
+            inside_flattened_steps = True
+        elif "</FlattenedSteps>" in line:
+            inside_flattened_steps = False
+
+        if not inside_flattened_steps and list_item_pattern.match(line):
+            list_block = []
+
+            while i < len(lines):
+                current = lines[i]
+                if (
+                    list_item_pattern.match(current)
+                    or current.strip() == ""
+                    or current.startswith((" ", "\t"))
+                ):
+                    list_block.append(current)
+                    i += 1
+                else:
+                    break
+
+            import_statements.add("import { Steps } from '@astrojs/starlight/components';")
+            output_lines.append("<Steps>")
+            output_lines.extend(list_block)
+            output_lines.append("</Steps>")
+        else:
+            output_lines.append(line)
+            i += 1
+
+    return "\n".join(output_lines)
 
 
 def convert_admonitions_to_asides(
@@ -528,7 +594,9 @@ def convert_help_center_file_to_mdx(
     result = insert_flattened_steps_component(
         result, include_files_info, import_statement_set, "../../components"
     )
+    result = insert_steps_component_for_ordered_lists(result, import_statement_set)
 
+    result = remove_blank_lines_from_steps(result)
     result = fix_file_imports(result, import_statement_set, "./include")
     result = convert_admonitions_to_asides(result, import_statement_set, "../../components")
     result = convert_tab_syntax(result, import_statement_set)
@@ -573,6 +641,17 @@ def convert_include_file_to_mdx(
         result, include_files_info, import_statement_set, "../../../components"
     )
 
+    # If the file is only an ordered list, it will already have been
+    # wrapped by FlattenedSteps and does not need any changes inside
+    # the file itself.
+    if not include_files_info[os.path.basename(markdown_file_path)]["is_only_ordered_list"]:
+        result = insert_steps_component_for_ordered_lists(result, import_statement_set)
+    else:
+        # We just remove all blank lines except the trailing blank line
+        # at the end of the file if the file is only an ordered list.
+        result = "\n".join(line for line in result.splitlines() if line.strip()) + "\n"
+
+    result = remove_blank_lines_from_steps(result)
     result = fix_file_imports(result, import_statement_set, ".")
     result = convert_admonitions_to_asides(result, import_statement_set, "../../../components")
     result = convert_tab_syntax(result, import_statement_set)
@@ -613,7 +692,7 @@ def get_include_files_info(include_input_dir: str) -> dict[str, IncludeFileInfo]
 
 def run() -> None:
     input_dir = os.path.join(BASE_DIR, "help")
-    output_dir = os.path.join(BASE_DIR, "help-beta/src/content/docs")
+    output_dir = os.path.join(BASE_DIR, "starlight_help/src/content/docs")
     include_input_dir = os.path.join(input_dir, "include")
     include_output_dir = os.path.join(output_dir, "include")
     print("Starting the conversion from MD to MDX...")
@@ -662,6 +741,15 @@ def run() -> None:
             ) as mdx_file:
                 mdx_file.write(mdx)
     print(f"Converted {converted_count} main help files. Conversion completed.")
+
+    # We use format-silent here, since running format on the converted
+    # files gives us tons of warnings while fixing those warnings. We
+    # also remove the frail flag when compared to the standard format
+    # since the first run will always give us warnings.
+    subprocess.check_call(
+        ["/usr/local/bin/corepack", "pnpm", "run", "format-silent"],
+        cwd="starlight_help",
+    )
 
 
 run()

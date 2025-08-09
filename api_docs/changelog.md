@@ -20,12 +20,88 @@ format used by the Zulip server that they are interacting with.
 
 ## Changes in Zulip 11.0
 
+**Feature level 417**
+
+* [`POST channels/create`](/api/create-channel): Added a dedicated
+  endpoint for creating a new channel. Previously, channel creation
+  was done entirely through
+  [`POST /users/me/subscriptions`](/api/subscribe).
+
+**Feature level 416**
+
+* [`POST /invites`](/api/send-invites), [`POST
+  /invites/multiuse`](/api/create-invite-link): Added a new parameter
+  `welcome_message_custom_text` which allows the users to add a
+  Welcome Bot custom message for new users through invitations.
+
+* [`POST /register`](/api/register-queue), [`POST /events`](/api/get-events),
+  `PATCH /realm`: Added `welcome_message_custom_text` realm setting which is the
+  default custom message for the Welcome Bot when sending invitations to new users.
+
+* [`POST /realm/test_welcome_bot_custom_message`](/api/test-welcome-bot-custom-message):
+  Added new endpoint test messages with the Welcome Bot custom message. The test
+  messages are sent to the acting administrator, allowing them to preview how the
+  custom welcome message will appear to new users upon joining the organization.
+
+**Feature level 415**
+
+* [`POST /reminders`](/api/create-message-reminder): Added parameter
+  `note` to allow users to add notes to their reminders.
+* [`POST /register`](/api/register-queue): Added `max_reminder_note_length`
+  for clients to restrict the reminder note length before sending it to
+  the server.
+
+**Feature level 414**
+
+* [`POST /channel_folders/create`](/api/create-channel-folder),
+  [`GET /channel_folders`](/api/get-channel-folders),
+  [`PATCH /channel_folders/{channel_folder_id}`](/api/update-channel-folder):
+  Added a new field `order` to show in which order should channel folders be
+  displayed. The list is 0-indexed and works similar to the `order` field of
+  custom profile fields.
+* [`PATCH /channel_folders`](/api/patch-channel-folders): Added a new
+  endpoint for reordering channel folders. It accepts an array of channel
+  folder IDs arranged in the order the user desires it to be in.
+* [`GET /channel_folders`](/api/get-channel-folders): Channel folders will
+  be ordered by the `order` field instead of `id` field when being returned.
+
+**Feature level 413**
+
+* Mobile push notification payloads for APNs no longer contain the
+  `server` and `realm_id` fields, which were unused.
+* Mobile push notification payloads for FCM to remove push
+  notifications no longer contain the legacy pre-2019
+  `zulip_message_id` field; all functional clients support the newer
+  `zulip_message_ids`.
+* Mobile push notification payloads for FCM to for new messages no
+  longer contain the (unused) `content_truncated` boolean field.
+- E2EE mobile push notification payloads now have a [modernized and
+  documented format](/api/mobile-notifications).
+
+**Feature level 412**
+
+* [`POST /register`](/api/register-queue),
+  [`GET /users/me/subscriptions`](/api/get-subscriptions):
+  Added support for passing `partial` as argument to `include_subscribers`
+  parameter to get only partial subscribers data of the channel.
+* [`POST /register`](/api/register-queue),
+  [`GET /users/me/subscriptions`](/api/get-subscriptions):
+  Added `partial_subscribers` field in `subscription` objects.
+
+**Feature level 411**
+
+* [`POST /register`](/api/register-queue), [`PATCH /settings`](/api/update-settings),
+  [`PATCH /realm/user_settings_defaults`](/api/update-realm-user-settings-defaults):
+  Added new `web_left_sidebar_show_channel_folders` display setting,
+  controlling whether any [channel folders](/help/channel-folders)
+  configured by the organization are displayed in the left sidebar.
+
 **Feature level 410**
 
 * [`POST /register`](/api/register-queue): Added
   `max_channel_folder_name_length` and
   `max_channel_folder_description_length` fields to the response.
-- Mobile push notification payloads for APNs no longer contain the
+* Mobile push notification payloads for APNs no longer contain the
   `time` field, which was unused.
 
 **Feature level 409**

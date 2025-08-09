@@ -49,11 +49,11 @@ function current_section_ids_for_streams(): Map<number, StreamListSection> {
     return map;
 }
 
-export function current_section_id_for_stream(stream_id: number): string {
+// Will return undefined if the given stream isn't in the user's stream
+// list (i.e. they're not subscribed to it).
+export function current_section_id_for_stream(stream_id: number): string | undefined {
     // Warning: This function is O(n), so it should not be called in a loop.
-    const section = current_section_ids_for_streams().get(stream_id);
-    assert(section !== undefined);
-    return section.id;
+    return current_section_ids_for_streams().get(stream_id)?.id;
 }
 
 function compare_function(a: number, b: number): number {
@@ -103,10 +103,12 @@ export function has_recent_activity(sub: StreamSubscription): boolean {
 
 export type StreamListSection = {
     id: string;
+    folder_id: number | null;
     section_title: string;
     streams: number[];
     muted_streams: number[];
     inactive_streams: number[]; // Only used for folder sections
+    order?: number; // Only used for folder sections
 };
 
 type StreamListSortResult = {
@@ -127,6 +129,7 @@ export function sort_groups(stream_ids: number[], search_term: string): StreamLi
 
     const pinned_section: StreamListSection = {
         id: "pinned-streams",
+        folder_id: null,
         section_title: $t({defaultMessage: "PINNED CHANNELS"}),
         streams: [],
         muted_streams: [],
@@ -134,6 +137,7 @@ export function sort_groups(stream_ids: number[], search_term: string): StreamLi
     };
     const normal_section: StreamListSection = {
         id: "normal-streams",
+        folder_id: null,
         section_title: $t({defaultMessage: "CHANNELS"}),
         streams: [],
         muted_streams: [],
@@ -154,16 +158,18 @@ export function sort_groups(stream_ids: number[], search_term: string): StreamLi
             } else {
                 pinned_section.streams.push(stream_id);
             }
-        } else if (sub.folder_id) {
+        } else if (user_settings.web_left_sidebar_show_channel_folders && sub.folder_id) {
             const folder = channel_folders.get_channel_folder_by_id(sub.folder_id);
             let section = folder_sections.get(sub.folder_id);
             if (!section) {
                 section = {
                     id: sub.folder_id.toString(),
+                    folder_id: sub.folder_id,
                     section_title: folder.name.toUpperCase(),
                     streams: [],
                     muted_streams: [],
                     inactive_streams: [],
+                    order: folder.order,
                 };
                 folder_sections.set(sub.folder_id, section);
             }
@@ -185,8 +191,8 @@ export function sort_groups(stream_ids: number[], search_term: string): StreamLi
         }
     }
 
-    const folder_sections_sorted = [...folder_sections.values()].sort((section_a, section_b) =>
-        util.strcmp(section_a.section_title, section_b.section_title),
+    const folder_sections_sorted = [...folder_sections.values()].sort(
+        (section_a, section_b) => section_a.order! - section_b.order!,
     );
 
     // This needs to have the same ordering as the order they're displayed in the sidebar.

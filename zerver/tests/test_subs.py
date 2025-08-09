@@ -1439,9 +1439,9 @@ class StreamAdminTest(ZulipTestCase):
         result = self.client_patch(f"/json/streams/{stream.id}", {"new_name": "stream_name1"})
         self.assert_json_error(result, "Channel already has that name.")
         result = self.client_patch(f"/json/streams/{stream.id}", {"new_name": "Denmark"})
-        self.assert_json_error(result, "Channel name is already in use.")
+        self.assert_json_error(result, "Channel 'Denmark' already exists", status_code=409)
         result = self.client_patch(f"/json/streams/{stream.id}", {"new_name": "denmark "})
-        self.assert_json_error(result, "Channel name is already in use.")
+        self.assert_json_error(result, "Channel 'denmark' already exists", status_code=409)
 
         # Do a rename that is case-only--this should succeed.
         result = self.client_patch(f"/json/streams/{stream.id}", {"new_name": "sTREAm_name1"})
@@ -3261,6 +3261,27 @@ class SubscriptionAPITest(ZulipTestCase):
             self.assertIsInstance(stream["name"], str)
             self.assertIsInstance(stream["color"], str)
             self.assertIsInstance(stream["invite_only"], bool)
+            self.assertNotIn("partial_subscribers", stream)
+            self.assertNotIn("subscribers", stream)
+            # check that the stream name corresponds to an actual
+            # stream; will throw Stream.DoesNotExist if it doesn't
+            get_stream(stream["name"], self.test_realm)
+        list_streams = [stream["name"] for stream in json["subscriptions"]]
+        # also check that this matches the list of your subscriptions
+        self.assertEqual(sorted(list_streams), sorted(self.streams))
+
+        # Text explicitly passing `include_subscribers` as "false"
+        result = self.api_get(
+            self.test_user, "/api/v1/users/me/subscriptions", {"include_subscribers": "false"}
+        )
+        json = self.assert_json_success(result)
+        self.assertIn("subscriptions", json)
+        for stream in json["subscriptions"]:
+            self.assertIsInstance(stream["name"], str)
+            self.assertIsInstance(stream["color"], str)
+            self.assertIsInstance(stream["invite_only"], bool)
+            self.assertNotIn("partial_subscribers", stream)
+            self.assertNotIn("subscribers", stream)
             # check that the stream name corresponds to an actual
             # stream; will throw Stream.DoesNotExist if it doesn't
             get_stream(stream["name"], self.test_realm)
@@ -3283,6 +3304,7 @@ class SubscriptionAPITest(ZulipTestCase):
             self.assertIsInstance(stream["name"], str)
             self.assertIsInstance(stream["color"], str)
             self.assertIsInstance(stream["invite_only"], bool)
+            self.assertIn("subscribers", stream)
             # check that the stream name corresponds to an actual
             # stream; will throw Stream.DoesNotExist if it doesn't
             get_stream(stream["name"], self.test_realm)

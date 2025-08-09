@@ -4,11 +4,11 @@ import assert from "minimalistic-assert";
 import type * as tippy from "tippy.js";
 
 import render_stream_creation_confirmation_banner from "../templates/modal_banner/stream_creation_confirmation_banner.hbs";
-import render_stream_info_banner from "../templates/modal_banner/stream_info_banner.hbs";
 import render_browse_streams_list from "../templates/stream_settings/browse_streams_list.hbs";
 import render_browse_streams_list_item from "../templates/stream_settings/browse_streams_list_item.hbs";
 import render_stream_settings_overlay from "../templates/stream_settings/stream_settings_overlay.hbs";
 
+import type {Banner} from "./banners.ts";
 import * as blueslip from "./blueslip.ts";
 import * as browser_history from "./browser_history.ts";
 import * as components from "./components.ts";
@@ -30,6 +30,7 @@ import {postprocess_content} from "./postprocess_content.ts";
 import * as resize from "./resize.ts";
 import * as scroll_util from "./scroll_util.ts";
 import * as search_util from "./search_util.ts";
+import * as settings_banner from "./settings_banner.ts";
 import * as settings_config from "./settings_config.ts";
 import * as settings_data from "./settings_data.ts";
 import {type GroupSettingValue, current_user, realm} from "./state_data.ts";
@@ -50,6 +51,21 @@ import * as sub_store from "./sub_store.ts";
 import type {StreamSubscription} from "./sub_store.ts";
 import * as util from "./util.ts";
 import * as views_util from "./views_util.ts";
+
+const STREAM_INFO_BANNER: Banner = {
+    intent: "info",
+    label: $t({
+        defaultMessage: "Channels organize conversations based on who needs to see them.",
+    }),
+    buttons: [
+        {
+            label: $t({defaultMessage: "Learn more"}),
+            custom_classes: "banner-external-link",
+            attention: "quiet",
+        },
+    ],
+    close_button: false,
+};
 
 export function is_sub_already_present(sub: StreamSubscription): boolean {
     return stream_ui_updates.row_for_stream_id(sub.stream_id).length > 0;
@@ -245,7 +261,29 @@ export function update_channel_folder(sub: StreamSubscription, folder_id: number
     stream_ui_updates.update_channel_folder_dropdown(sub);
     stream_list.build_stream_list(false);
     const section_id = stream_list_sort.current_section_id_for_stream(sub.stream_id);
-    stream_list.maybe_hide_topic_bracket(section_id);
+    if (section_id !== undefined) {
+        stream_list.maybe_hide_topic_bracket(section_id);
+    }
+}
+
+export function reset_dropdown_set_to_archived_folder(folder_id: number): void {
+    // This function handles the case where user is in process of changing
+    // folder for a channel or setting a folder for a new channel and the
+    // selected folder is archived by some other user.
+    if (!overlays.streams_open()) {
+        return;
+    }
+
+    if ($("#subscription_overlay .nothing-selected").css("display") !== "none") {
+        return;
+    }
+
+    const active_stream_id = stream_settings_components.get_active_data().id;
+    if (active_stream_id) {
+        stream_ui_updates.maybe_reset_channel_folder_dropdown(folder_id);
+    } else {
+        stream_create.maybe_reset_channel_folder_dropdown(folder_id);
+    }
 }
 
 export function update_subscribers_ui(sub: StreamSubscription): void {
@@ -902,16 +940,10 @@ function setup_page(callback: () => void): void {
             throttled_redraw_left_panel();
         });
 
-        const context = {
-            banner_type: compose_banner.INFO,
-            classname: "stream_info",
-            hide_close_button: true,
-            button_text: $t({defaultMessage: "Learn more"}),
-            button_link: "/help/introduction-to-channels",
-        };
-
-        $("#channels_overlay_container .nothing-selected .stream-info-banner").html(
-            render_stream_info_banner(context),
+        settings_banner.set_up_banner(
+            $(".stream-info-banner"),
+            STREAM_INFO_BANNER,
+            "/help/introduction-to-channels",
         );
 
         // When hitting Enter in the stream creation box, we open the

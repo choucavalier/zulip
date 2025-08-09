@@ -781,6 +781,26 @@ export function initialize(): void {
     });
 
     tippy.delegate("body", {
+        target: ".folder_id-dropdown-list-container .dropdown-list-delete, .new_channel_folder_id-dropdown-list-container .dropdown-list-delete",
+        content: $t({defaultMessage: "Delete folder"}),
+        delay: LONG_HOVER_DELAY,
+        appendTo: () => document.body,
+        onHidden(instance) {
+            instance.destroy();
+        },
+    });
+
+    tippy.delegate("body", {
+        target: ".folder_id-dropdown-list-container .dropdown-list-edit, .new_channel_folder_id-dropdown-list-container .dropdown-list-edit",
+        content: $t({defaultMessage: "Edit folder"}),
+        delay: LONG_HOVER_DELAY,
+        appendTo: () => document.body,
+        onHidden(instance) {
+            instance.destroy();
+        },
+    });
+
+    tippy.delegate("body", {
         target: ".generate-channel-email-button-container.disabled_setting_tooltip",
         onShow(instance) {
             instance.setContent(
@@ -844,6 +864,24 @@ export function initialize(): void {
                 ),
             );
         },
+        onHidden(instance) {
+            instance.destroy();
+        },
+    });
+
+    tippy.delegate("body", {
+        target: "#welcome_message_custom_text_buttons_container",
+        onShow(instance) {
+            const $elem = $(instance.reference);
+            if ($($elem).find("#send_test_welcome_bot_custom_message").prop("disabled")) {
+                const content = $t({defaultMessage: "Welcome Bot message text is required."});
+                instance.setContent(content);
+                return undefined;
+            }
+            instance.destroy();
+            return false;
+        },
+        appendTo: () => document.body,
         onHidden(instance) {
             instance.destroy();
         },

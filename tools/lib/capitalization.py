@@ -160,6 +160,8 @@ IGNORED_PHRASES = [
     r"to add a new line",
     # Used in showing Notification Bot read receipts message
     "Notification Bot",
+    # Used in strings around welcome bot custom messages
+    r"Welcome Bot",
     # Used in presence_enabled setting label
     r"invisible mode off",
     # Typeahead suggestions for "Pronouns" custom field type.
@@ -176,6 +178,10 @@ IGNORED_PHRASES = [
     r"archived",
     # Used in pills for deactivated users.
     r"deactivated",
+    # Used in pills for resolved topics.
+    r"resolved",
+    # Used in pills for unresolved topics.
+    r"unresolved",
     # This is a reference to a setting/secret and should be lowercase.
     r"zulip_org_id",
     # These are custom time unit options for modal dropdowns

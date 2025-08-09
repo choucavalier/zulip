@@ -28,6 +28,32 @@ support](/help/contact-support) with details on what you're trying to do.
 
 {end_tabs}
 
+## Edit a custom linkifier
+
+{start_tabs}
+
+{settings_tab|linkifier-settings}
+
+1. In the **Actions** column, click the **edit** (<i class="zulip-icon zulip-icon-edit"></i>)
+   icon for the linkifier you want to edit.
+
+1. Edit linkifier information as desired, and click **Save changes**.
+
+{end_tabs}
+
+## Delete a custom linkifier
+
+{start_tabs}
+
+{settings_tab|linkifier-settings}
+
+1. In the **Actions** column, click the **delete** (<i class="zulip-icon
+   zulip-icon-trash"></i>) icon for the linkifier you want to delete.
+
+1. Approve by clicking **Confirm**.
+
+{end_tabs}
+
 ## Reorder linkifiers
 
 Linkifiers are processed in order, and will not apply to text that
@@ -39,8 +65,8 @@ when more than one linkifier applies. See the
 
 {settings_tab|linkifier-settings}
 
-1. Under **Linkifiers**, click and drag the vertical dots to reorder the list of
-   linkifiers.
+1. In the **Pattern** column under **Linkifiers**, click and drag the vertical
+   dots to reorder the list of linkifiers.
 
 {end_tabs}
 
@@ -75,10 +101,10 @@ variants. For example, the Zulip development community
 
 {start_tabs}
 
-* Pattern: `#M(?P<id>[0-9]+)`
-* URL template: `https://github.com/zulip/zulip-mobile/issues/{id}`
-* Original text: `#M2468`
-* Automatically links to: `https://github.com/zulip/zulip-mobile/issues/2468`
+* Pattern: `#F(?P<id>[0-9]+)`
+* URL template: `https://github.com/zulip/zulip-flutter/issues/{id}`
+* Original text: `#F245`
+* Automatically links to: `https://github.com/zulip/zulip-flutter/issues/245`
 
 {end_tabs}
 

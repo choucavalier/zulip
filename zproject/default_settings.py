@@ -516,7 +516,7 @@ PERSONAL_ZMIRROR_SERVER: str | None = None
 # When security-relevant links in emails expire.
 CONFIRMATION_LINK_DEFAULT_VALIDITY_DAYS = 1
 INVITATION_LINK_VALIDITY_DAYS = 10
-REALM_CREATION_LINK_VALIDITY_DAYS = 7
+CAN_CREATE_REALM_LINK_VALIDITY_DAYS = 7
 
 # Version number for ToS.  Change this if you want to force every
 # user to click through to re-accept terms of service before using
@@ -652,6 +652,11 @@ OUTGOING_WEBHOOK_TIMEOUT_SECONDS = 10
 # Any message content exceeding this limit will be truncated.
 # See: `_internal_prep_message` function in zerver/actions/message_send.py.
 MAX_MESSAGE_LENGTH = 10000
+
+# Maximum length of note text for a reminder.
+# NOTE: Keep it significantly smaller than MAX_MESSAGE_LENGTH
+# to avoid message being completely truncated when reminder is sent.
+MAX_REMINDER_NOTE_LENGTH = 1000
 
 # The maximum number of drafts to send in the response to /register.
 # More drafts, should they exist for some crazy reason, could be

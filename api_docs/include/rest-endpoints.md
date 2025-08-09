@@ -62,7 +62,7 @@
 * [Get all channels](/api/get-streams)
 * [Get a channel by ID](/api/get-stream-by-id)
 * [Get channel ID](/api/get-stream-id)
-* [Create a channel](/api/create-stream)
+* [Create a channel](/api/create-channel)
 * [Update a channel](/api/update-stream)
 * [Archive a channel](/api/archive-stream)
 * [Get channel's email address](/api/get-stream-email-address)
@@ -74,6 +74,7 @@
 * [Remove a default channel](/api/remove-default-stream)
 * [Create a channel folder](/api/create-channel-folder)
 * [Get channel folders](/api/get-channel-folders)
+* [Reorder channel folders](/api/patch-channel-folders)
 * [Update a channel folder](/api/update-channel-folder)
 
 #### Users
@@ -143,6 +144,7 @@
 * [Get all data exports](/api/get-realm-exports)
 * [Create a data export](/api/export-realm)
 * [Get data export consent state](/api/get-realm-export-consents)
+* [Test welcome bot custom message](/api/test-welcome-bot-custom-message)
 
 #### Real-time events
 
@@ -157,6 +159,7 @@
 * [Fetch an API key (development only)](/api/dev-fetch-api-key)
 * [Send a test notification to mobile device(s)](/api/test-notify)
 * [Register E2EE push device](/api/register-push-device)
+* [Mobile notifications](/api/mobile-notifications)
 * [Add an APNs device token](/api/add-apns-token)
 * [Remove an APNs device token](/api/remove-apns-token)
 * [Add an FCM registration token](/api/add-fcm-token)
